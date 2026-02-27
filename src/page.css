@@ -1,0 +1,113 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+  background: #fafbfc;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Toolbar ── */
+.page-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px 10px;
+  padding-top: 12px;
+  flex-shrink: 0;
+}
+
+.page-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.page-icon {
+  flex-shrink: 0;
+}
+
+.page-task-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #0f172a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: -0.1px;
+}
+
+/* ── Editor ── */
+.page-editor-wrap {
+  flex: 1;
+  min-height: 0;
+  padding: 0 16px;
+  display: flex;
+}
+
+.page-editor {
+  flex: 1;
+  padding: 16px 18px;
+  border: 1px solid #e8ecf1;
+  border-radius: 12px;
+  font-size: 14px;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+  line-height: 1.75;
+  color: #0f172a;
+  resize: none;
+  outline: none;
+  background: #fff;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  tab-size: 2;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.page-editor:focus {
+  border-color: #a5b4fc;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.06);
+}
+
+.page-editor::placeholder {
+  color: #94a3b8;
+  font-style: italic;
+}
+
+/* ── Status bar ── */
+.page-status {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 20px;
+  font-size: 11px;
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+
+/* ── Scrollbar ── */
+.page-editor::-webkit-scrollbar {
+  width: 5px;
+}
+
+.page-editor::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.page-editor::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.page-editor::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}

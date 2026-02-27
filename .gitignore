@@ -1,0 +1,21 @@
+# Rust / Cargo
+src-tauri/target/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Claude Code
+.claude/
+
+# Tauri generated schemas (auto-generated on build)
+src-tauri/gen/
+
+# Environment
+.env
+.env.*

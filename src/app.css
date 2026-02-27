@@ -1,0 +1,1171 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+  font-size: 14px;
+  color: #0f172a;
+  background: #fafbfc;
+  overflow: hidden;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Mode Switching ── */
+body.mode-full .compact-mode-container { display: none; }
+body.mode-compact .full-mode-container { display: none; }
+body.mode-compact { background: transparent; }
+
+.full-mode-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Header (drag bar + app title) ── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px 8px;
+  padding-top: 38px;
+  flex-shrink: 0;
+  cursor: grab;
+  position: relative;
+}
+
+.header:active {
+  cursor: grabbing;
+}
+
+/* Top accent line (matches compact view) */
+.header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 12px;
+  right: 12px;
+  height: 3px;
+  background: linear-gradient(90deg, #4f46e5, #818cf8, #7c3aed);
+  border-radius: 0 0 3px 3px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-icon {
+  flex-shrink: 0;
+}
+
+.header h1 {
+  font-size: 13px;
+  font-weight: 600;
+  color: #94a3b8;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-date {
+  font-size: 11px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.mode-toggle-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: #94a3b8;
+  transition: background 0.15s, color 0.15s;
+}
+
+.mode-toggle-btn:hover {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+/* ── Add Todo ── */
+.add-todo {
+  display: flex;
+  gap: 8px;
+  padding: 8px 20px 12px;
+  -webkit-app-region: no-drag;
+  flex-shrink: 0;
+}
+
+#todo-input {
+  flex: 1;
+  padding: 10px 14px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  background: #fff;
+  color: #0f172a;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+#todo-input:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+#todo-input::placeholder {
+  color: #94a3b8;
+}
+
+/* ── Estimate Field (clock icon + input pill) ── */
+.estimate-field {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  flex-shrink: 0;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  color: #94a3b8;
+}
+
+.estimate-field:focus-within {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+  color: #6366f1;
+}
+
+.estimate-field svg {
+  flex-shrink: 0;
+}
+
+.estimate-field input {
+  width: 38px;
+  padding: 7px 0;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  text-align: center;
+  color: #4b5563;
+}
+
+.estimate-field input::placeholder {
+  color: #cbd5e1;
+}
+
+/* Small variant for detail/subtask rows */
+.estimate-field.sm {
+  padding: 0 6px;
+  border-radius: 6px;
+  gap: 4px;
+}
+
+.estimate-field.sm input {
+  width: 34px;
+  padding: 4px 0;
+  font-size: 11px;
+}
+
+.estimate-field.sm svg {
+  width: 10px;
+  height: 10px;
+}
+
+#add-btn {
+  width: 38px;
+  height: 38px;
+  border: none;
+  border-radius: 10px;
+  background: #6366f1;
+  color: #fff;
+  font-size: 20px;
+  font-weight: 300;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+
+#add-btn:hover {
+  background: #4f46e5;
+}
+
+/* ── Todo List ── */
+.todo-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ── Todo Item (Card) ── */
+.todo-item {
+  background: #fff;
+  border: 1px solid #e8ecf1;
+  border-radius: 12px;
+  transition: box-shadow 0.2s, border-color 0.2s, background 0.2s;
+  animation: fadeSlideIn 0.15s ease-out;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.todo-item:hover {
+  border-color: #d4d9e1;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.todo-item.in-progress {
+  background: linear-gradient(135deg, #eef2ff 0%, #f5f3ff 100%);
+  border-color: #a5b4fc;
+  box-shadow: 0 2px 12px rgba(99, 102, 241, 0.12), 0 0 0 1px rgba(99, 102, 241, 0.08);
+}
+
+.todo-item.in-progress:hover {
+  border-color: #818cf8;
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.16), 0 0 0 1px rgba(99, 102, 241, 0.12);
+}
+
+.todo-item.completed {
+  background: #fafbfc;
+  border-color: #f0f2f5;
+}
+
+.todo-item.dragging {
+  opacity: 0.4;
+  background: #eef2ff;
+}
+
+/* ── Card Progress Bar ── */
+.card-progress {
+  height: 3px;
+  background: #e2e8f0;
+  margin: 0;
+}
+
+.card-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #6366f1, #a78bfa);
+  transition: width 0.3s ease;
+}
+
+.todo-item.in-progress .card-progress {
+  background: #c7d2fe;
+}
+
+.todo-item.completed .card-progress {
+  background: #e2e8f0;
+}
+
+.todo-item.completed .card-progress-fill {
+  background: #94a3b8;
+}
+
+@keyframes fadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.todo-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px 14px 12px;
+}
+
+.todo-item.in-progress .todo-main {
+  padding-left: 14px;
+}
+
+/* ── Drag Grip ── */
+.drag-grip {
+  cursor: grab;
+  width: 16px;
+  height: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  opacity: 0.2;
+  transition: opacity 0.15s;
+  padding: 2px;
+}
+
+.todo-main:hover .drag-grip {
+  opacity: 0.6;
+}
+
+.drag-grip span {
+  display: block;
+  width: 3px;
+  height: 3px;
+  background: #94a3b8;
+  border-radius: 50%;
+}
+
+/* ── Drop Indicator ── */
+.drop-indicator {
+  height: 2px;
+  background: #6366f1;
+  border-radius: 1px;
+  margin: 2px 0;
+}
+
+.expand-btn {
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  font-size: 10px;
+  transition: transform 0.15s, color 0.15s;
+  flex-shrink: 0;
+  border-radius: 4px;
+}
+
+.expand-btn:hover {
+  color: #64748b;
+  background: #f1f5f9;
+}
+
+.expand-btn.expanded {
+  transform: rotate(90deg);
+}
+
+.todo-checkbox {
+  width: 20px;
+  height: 20px;
+  accent-color: #6366f1;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.1s ease;
+}
+
+.todo-checkbox:active {
+  transform: scale(0.9);
+}
+
+.todo-title {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+  color: #0f172a;
+  line-height: 1.5;
+  word-break: break-word;
+  cursor: text;
+}
+
+.todo-item.completed .todo-title {
+  text-decoration: line-through;
+  color: #cbd5e1;
+  font-weight: 400;
+  cursor: default;
+}
+
+/* ── Actions (always visible) ── */
+.todo-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Play button and estimate: slightly muted when not hovered */
+.todo-actions .play-btn,
+.todo-actions .estimate-badge {
+  opacity: 0.5;
+  transition: opacity 0.15s;
+}
+
+.todo-main:hover .todo-actions .play-btn,
+.todo-main:hover .todo-actions .estimate-badge {
+  opacity: 1;
+}
+
+/* Active play button is always fully opaque */
+.todo-actions .play-btn.active {
+  opacity: 1;
+}
+
+/* Timer display always fully opaque */
+.todo-actions .timer-display {
+  opacity: 1;
+}
+
+/* Delete button stays hidden until hover */
+.todo-actions .delete-btn {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.todo-main:hover .todo-actions .delete-btn {
+  opacity: 1;
+}
+
+/* ── Timer Display (inline on in-progress task) ── */
+.timer-display {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6366f1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  margin-right: 4px;
+}
+
+.timer-display.over-time {
+  color: #ef4444;
+}
+
+/* ── Estimate badge ── */
+.estimate-badge {
+  font-size: 10px;
+  color: #94a3b8;
+  background: #f1f5f9;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.action-btn {
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+  color: #94a3b8;
+}
+
+.action-btn:hover {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.action-btn.play-btn {
+  color: #6366f1;
+}
+
+.action-btn.play-btn:hover {
+  background: #eef2ff;
+}
+
+.action-btn.play-btn.active {
+  color: #fff;
+  background: #6366f1;
+}
+
+.action-btn.play-btn.active:hover {
+  background: #4f46e5;
+}
+
+.action-btn.delete-btn:hover {
+  background: #fef2f2;
+  color: #ef4444;
+}
+
+.action-btn.page-btn {
+  opacity: 0.45;
+}
+
+.action-btn.page-btn:hover {
+  background: #eef2ff;
+  color: #6366f1;
+  opacity: 1;
+}
+
+/* ── Todo Detail (expanded) ── */
+.todo-detail {
+  display: none;
+  padding: 4px 16px 14px 54px;
+  border-top: 1px solid #f0f2f5;
+}
+
+.todo-detail.visible {
+  display: block;
+}
+
+.todo-item.in-progress .todo-detail {
+  padding-left: 54px;
+  border-top-color: rgba(99, 102, 241, 0.1);
+}
+
+/* Subitems */
+.subitems-section {
+  margin-top: 4px;
+}
+
+.subitem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+  transition: opacity 0.15s;
+}
+
+.subitem.dragging {
+  opacity: 0.4;
+}
+
+.sub-drop-indicator {
+  height: 2px;
+  background: #6366f1;
+  border-radius: 1px;
+  margin: 0;
+}
+
+.sub-drag-grip {
+  cursor: grab;
+  width: 14px;
+  height: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  flex-shrink: 0;
+  opacity: 0.2;
+  transition: opacity 0.15s;
+  padding: 1px;
+}
+
+.subitem:hover .sub-drag-grip {
+  opacity: 0.6;
+}
+
+.sub-drag-grip span {
+  display: block;
+  width: 2px;
+  height: 2px;
+  background: #94a3b8;
+  border-radius: 50%;
+}
+
+.subitem-checkbox {
+  width: 15px;
+  height: 15px;
+  accent-color: #6366f1;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.1s ease;
+}
+
+.subitem-checkbox:active {
+  transform: scale(0.9);
+}
+
+.subitem-title {
+  flex: 1;
+  font-size: 13px;
+  color: #4b5563;
+  line-height: 1.4;
+  cursor: text;
+}
+
+.subitem.completed .subitem-title {
+  text-decoration: line-through;
+  color: #cbd5e1;
+  cursor: default;
+}
+
+.subitem-delete {
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: #d1d5db;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.subitem:hover .subitem-delete {
+  opacity: 1;
+}
+
+.subitem-delete:hover {
+  color: #ef4444;
+}
+
+.add-subitem {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.add-subitem > input {
+  flex: 1;
+  padding: 5px 8px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  color: #0f172a;
+}
+
+.add-subitem > input:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
+}
+
+.add-subitem > input::placeholder {
+  color: #94a3b8;
+}
+
+.add-subitem button {
+  padding: 4px 10px;
+  border: none;
+  border-radius: 6px;
+  background: #f1f5f9;
+  color: #4b5563;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.add-subitem button:hover {
+  background: #e2e8f0;
+}
+
+/* ── Estimate row in detail view ── */
+.estimate-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.estimate-label {
+  font-size: 11px;
+  color: #94a3b8;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+/* ── Inline Title Editing ── */
+.todo-title-edit {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+  font-family: inherit;
+  color: #0f172a;
+  line-height: 1.5;
+  padding: 2px 6px;
+  border: 1.5px solid #6366f1;
+  border-radius: 6px;
+  outline: none;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.subitem-title-edit {
+  flex: 1;
+  font-size: 13px;
+  font-family: inherit;
+  color: #0f172a;
+  line-height: 1.4;
+  padding: 1px 4px;
+  border: 1.5px solid #6366f1;
+  border-radius: 4px;
+  outline: none;
+  background: #fff;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
+}
+
+/* ── Empty State ── */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 60px 20px;
+  color: #94a3b8;
+}
+
+.empty-state p {
+  font-size: 14px;
+  color: #94a3b8;
+}
+
+.empty-state.hidden {
+  display: none;
+}
+
+/* ── Footer ── */
+.footer {
+  padding: 10px 20px;
+  font-size: 12px;
+  color: #94a3b8;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.footer.hidden {
+  display: none;
+}
+
+/* ── Day Reset Banner ── */
+.day-reset-banner {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: #fffbeb;
+  border-top: 1px solid #fde68a;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.day-reset-banner.hidden {
+  display: none;
+}
+
+.day-reset-banner p {
+  font-size: 13px;
+  color: #92400e;
+  font-weight: 500;
+}
+
+.day-reset-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-clear, .btn-keep {
+  padding: 5px 12px;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-clear {
+  background: #fde68a;
+  color: #92400e;
+}
+
+.btn-clear:hover {
+  background: #fcd34d;
+}
+
+.btn-keep {
+  background: #fff;
+  color: #64748b;
+  border: 1px solid #e2e8f0;
+}
+
+.btn-keep:hover {
+  background: #f9fafb;
+}
+
+/* ── Scrollbar ── */
+.todo-list::-webkit-scrollbar {
+  width: 5px;
+}
+
+.todo-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.todo-list::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.todo-list::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* ═══════════════════════════════════════════
+   COMPACT MODE — Floating Focus Widget
+   ═══════════════════════════════════════════ */
+
+.compact-mode-container {
+  background: linear-gradient(180deg, rgba(255,255,255,0.97) 0%, rgba(248,250,252,0.97) 100%);
+  backdrop-filter: blur(28px) saturate(1.3);
+  -webkit-backdrop-filter: blur(28px) saturate(1.3);
+  border-radius: 14px;
+  box-shadow:
+    0 20px 40px rgba(0, 0, 0, 0.10),
+    0 6px 12px rgba(0, 0, 0, 0.06),
+    0 0 0 1px rgba(0, 0, 0, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  overflow: hidden;
+  user-select: none;
+}
+
+/* ── Compact Header (drag handle + controls) ── */
+.compact-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px 6px;
+  cursor: grab;
+  position: relative;
+}
+
+.compact-header:active {
+  cursor: grabbing;
+}
+
+/* Top accent line */
+.compact-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 12px;
+  right: 12px;
+  height: 3px;
+  background: linear-gradient(90deg, #4f46e5, #818cf8, #7c3aed);
+  border-radius: 0 0 3px 3px;
+}
+
+.compact-grip {
+  display: flex;
+  flex-direction: column;
+  gap: 2.5px;
+  flex-shrink: 0;
+  opacity: 0.2;
+  transition: opacity 0.15s;
+}
+
+.compact-header:hover .compact-grip {
+  opacity: 0.45;
+}
+
+.compact-grip span {
+  display: block;
+  width: 14px;
+  height: 1.5px;
+  background: #94a3b8;
+  border-radius: 1px;
+}
+
+.compact-timer {
+  flex: 1;
+  font-size: 18px;
+  font-weight: 700;
+  color: #312e81;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  letter-spacing: -0.5px;
+  line-height: 1;
+}
+
+.compact-timer.over-time {
+  color: #dc2626;
+}
+
+.compact-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.compact-btn {
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  cursor: pointer;
+  color: #94a3b8;
+  transition: background 0.15s, color 0.15s;
+}
+
+.compact-btn:hover {
+  background: rgba(99, 102, 241, 0.08);
+  color: #6366f1;
+}
+
+/* ── Compact Body ── */
+.compact-body {
+  padding: 2px 12px 12px;
+}
+
+/* ── Task Row (subtle card) ── */
+.compact-task-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: rgba(99, 102, 241, 0.04);
+  border: 1px solid rgba(99, 102, 241, 0.1);
+  border-radius: 10px;
+}
+
+/* ── Custom Checkbox (main task — round) ── */
+.compact-check {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border: 2px solid #a5b4fc;
+  border-radius: 50%;
+  cursor: pointer;
+  flex-shrink: 0;
+  position: relative;
+  background: transparent;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.1s ease;
+}
+
+.compact-check:hover {
+  border-color: #6366f1;
+  background: rgba(99, 102, 241, 0.06);
+}
+
+.compact-check:active {
+  transform: scale(0.88);
+}
+
+.compact-check:checked {
+  background: #6366f1;
+  border-color: #6366f1;
+}
+
+.compact-check:checked::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 6px;
+  width: 5px;
+  height: 9px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.compact-title {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+  line-height: 1.35;
+  word-break: break-word;
+  letter-spacing: -0.1px;
+}
+
+.compact-title.no-task {
+  color: #94a3b8;
+  font-style: italic;
+  font-weight: 400;
+}
+
+/* ── Progress Bar ── */
+.compact-progress {
+  height: 3px;
+  background: #cbd5e1;
+  border-radius: 2px;
+  margin: 8px 2px 2px;
+  overflow: hidden;
+}
+
+.compact-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4f46e5, #7c3aed);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* ── Compact Subtasks ── */
+.compact-subs {
+  margin: 6px 0 0 10px;
+  padding-left: 10px;
+  border-left: 2px solid #e8ecf1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.compact-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  transition: background 0.15s, opacity 0.2s;
+}
+
+.compact-sub:hover {
+  background: rgba(99, 102, 241, 0.04);
+}
+
+/* ── Custom Checkbox (subtask — smaller round) ── */
+.compact-sub input[type="checkbox"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 50%;
+  cursor: pointer;
+  flex-shrink: 0;
+  position: relative;
+  background: transparent;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.1s ease;
+}
+
+.compact-sub input[type="checkbox"]:hover {
+  border-color: #818cf8;
+}
+
+.compact-sub input[type="checkbox"]:active {
+  transform: scale(0.88);
+}
+
+.compact-sub input[type="checkbox"]:checked {
+  background: #6366f1;
+  border-color: #6366f1;
+}
+
+.compact-sub input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 4.5px;
+  width: 4px;
+  height: 7px;
+  border: solid #fff;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
+.compact-sub-text {
+  flex: 1;
+  font-size: 12.5px;
+  color: #1e293b;
+  line-height: 1.4;
+  letter-spacing: -0.05px;
+}
+
+.compact-sub.done {
+  opacity: 0.5;
+}
+
+.compact-sub.done .compact-sub-text {
+  text-decoration: line-through;
+  color: #64748b;
+}
+
+.compact-sub .estimate-badge {
+  font-size: 9px;
+  margin-left: auto;
+  background: rgba(99, 102, 241, 0.08);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #4f46e5;
+  font-weight: 500;
+}
+
+/* ── Compact Subtask Drag Grip ── */
+.compact-sub-grip {
+  cursor: grab;
+  width: 12px;
+  height: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+  padding: 1px;
+}
+
+.compact-sub:hover .compact-sub-grip {
+  opacity: 0.4;
+}
+
+.compact-sub-grip:active {
+  cursor: grabbing;
+  opacity: 0.7;
+}
+
+.compact-sub-grip span {
+  display: block;
+  width: 2px;
+  height: 2px;
+  background: #94a3b8;
+  border-radius: 50%;
+}
+
+.compact-sub.dragging {
+  opacity: 0.4;
+}
+
+/* ── Drag ghost (pointer-based DnD) ── */
+.drag-ghost {
+  border: 1px solid #e2e8f0;
+}
+
+.drag-grip:active,
+.sub-drag-grip:active {
+  cursor: grabbing;
+}
