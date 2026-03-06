@@ -365,16 +365,33 @@ fn open_page_window(
         .inner_size(480.0, 560.0)
         .min_inner_size(320.0, 300.0);
 
-    // Position page window beside the main window instead of centered
+    // Position page window 36px right+down from main window, or 36px left+down if no space
     if let Some(main_win) = app.get_webview_window("main") {
-        if let (Ok(pos), Ok(size)) = (main_win.outer_position(), main_win.outer_size()) {
-            let main_x = pos.x as f64;
-            let main_y = pos.y as f64;
-            let main_w = size.width as f64;
-            let gap = 16.0;
-            // Try right side first; the window will auto-clamp if off-screen
-            let page_x = main_x + main_w + gap;
-            builder = builder.position(page_x, main_y);
+        if let (Ok(pos), Ok(size), Ok(Some(monitor))) =
+            (main_win.outer_position(), main_win.outer_size(), main_win.current_monitor())
+        {
+            let scale = monitor.scale_factor();
+            // Convert physical pixels to logical pixels
+            let main_x = pos.x as f64 / scale;
+            let main_y = pos.y as f64 / scale;
+            let main_w = size.width as f64 / scale;
+            let mon_pos = monitor.position();
+            let mon_size = monitor.size();
+            let mon_right = mon_pos.x as f64 / scale + mon_size.width as f64 / scale;
+
+            let gap = 36.0;
+            let page_w = 480.0;
+            let page_y = main_y + gap;
+
+            let page_x = if main_x + main_w + gap + page_w <= mon_right {
+                // Fits on the right
+                main_x + main_w + gap
+            } else {
+                // Place on the left
+                main_x - page_w - gap
+            };
+
+            builder = builder.position(page_x, page_y);
         }
     } else {
         builder = builder.center();
