@@ -226,16 +226,30 @@
   // ══════════════════════════════════════════
 
   resetClearBtn.addEventListener('click', async () => {
+    // Close page windows for all tasks before archiving
+    for (const todo of todos) {
+      await invoke('close_page_window', { taskId: todo.id });
+    }
+    await invoke('archive_todos', { mode: 'clear' });
     todos = [];
     currentTaskId = null;
-    await invoke('clear_todos');
     dayResetBanner.classList.add('hidden');
     render();
   });
 
   resetKeepBtn.addEventListener('click', async () => {
-    await invoke('save_todos', { todos, currentTaskId });
+    // Close page windows for completed tasks before archiving
+    for (const todo of todos) {
+      if (todo.completed) {
+        await invoke('close_page_window', { taskId: todo.id });
+      }
+    }
+    await invoke('archive_todos', { mode: 'keep' });
+    const data = await invoke('load_data');
+    todos = data.todos;
+    currentTaskId = data.currentTaskId;
     dayResetBanner.classList.add('hidden');
+    render();
   });
 
   // ══════════════════════════════════════════

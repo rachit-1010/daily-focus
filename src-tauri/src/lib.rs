@@ -39,6 +39,8 @@ mod macos_overlay {
 struct AppData {
     #[serde(default)]
     todos: Vec<Todo>,
+    #[serde(default)]
+    archived_todos: Vec<Todo>,
     current_task_id: Option<String>,
     todos_date: Option<String>,
     #[serde(default)]
@@ -324,6 +326,43 @@ fn clear_todos(store: tauri::State<DataStore>) {
 }
 
 #[tauri::command]
+fn archive_todos(store: tauri::State<DataStore>, mode: String) {
+    let now = now_ms();
+    {
+        let mut data = store.data.lock().unwrap();
+
+        let to_archive: Vec<Todo> = if mode == "clear" {
+            // Archive ALL tasks
+            data.todos.drain(..).collect()
+        } else {
+            // mode == "keep" — Archive only completed tasks, keep pending
+            let (completed, pending): (Vec<Todo>, Vec<Todo>) =
+                data.todos.drain(..).partition(|t| t.completed);
+            data.todos = pending;
+            completed
+        };
+
+        // Finalize timers and move to archived_todos
+        for mut todo in to_archive {
+            if let Some(started) = todo.timer_started_at {
+                todo.elapsed_seconds += (now - started) / 1000;
+                todo.timer_started_at = None;
+            }
+            todo.in_progress = false;
+
+            // Deduplicate: don't add if already archived
+            if !data.archived_todos.iter().any(|t| t.id == todo.id) {
+                data.archived_todos.push(todo);
+            }
+        }
+
+        data.current_task_id = None;
+        data.todos_date = Some(today_str());
+    }
+    store.save();
+}
+
+#[tauri::command]
 fn toggle_compact_mode(store: tauri::State<DataStore>, app: AppHandle, compact: bool) {
     {
         let mut data = store.data.lock().unwrap();
@@ -449,6 +488,7 @@ fn open_page_window(
     let _title = data
         .todos
         .iter()
+        .chain(data.archived_todos.iter())
         .find(|t| t.id == task_id)
         .map(|t| t.title.clone())
         .unwrap_or_else(|| "Notes".to_string());
@@ -535,6 +575,7 @@ fn save_page(
             let data = store.data.lock().unwrap();
             data.todos
                 .iter()
+                .chain(data.archived_todos.iter())
                 .find(|t| t.id == task_id)
                 .map(|t| t.title.clone())
                 .unwrap_or_else(|| {
@@ -622,6 +663,7 @@ fn list_all_pages(
                 PageType::Task => app_data
                     .todos
                     .iter()
+                    .chain(app_data.archived_todos.iter())
                     .find(|t| t.id == *file_id)
                     .map(|t| t.title.clone())
                     .unwrap_or_else(|| file_id.clone()),
@@ -659,7 +701,7 @@ fn list_all_pages(
     // Update task page titles from current todo data
     for meta in meta_data.iter_mut() {
         if meta.page_type == PageType::Task {
-            if let Some(todo) = app_data.todos.iter().find(|t| t.id == meta.id) {
+            if let Some(todo) = app_data.todos.iter().chain(app_data.archived_todos.iter()).find(|t| t.id == meta.id) {
                 if meta.title != todo.title {
                     meta.title = todo.title.clone();
                     changed = true;
@@ -877,6 +919,7 @@ pub fn run() {
             complete_task,
             toggle_subitem,
             clear_todos,
+            archive_todos,
             toggle_compact_mode,
             set_estimate,
             reorder_todos,
