@@ -90,6 +90,26 @@ struct Position {
     y: f64,
 }
 
+// ── Page metadata model ──
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "lowercase")]
+enum PageType {
+    Task,
+    Daily,
+    Note,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+struct PageMeta {
+    id: String,
+    title: String,
+    page_type: PageType,
+    created_at: u64,
+    updated_at: u64,
+}
+
 // ── Data store (JSON file on disk) ──
 
 struct DataStore {
@@ -119,6 +139,82 @@ impl DataStore {
             let _ = fs::create_dir_all(self.path.parent().unwrap());
             let _ = fs::write(&self.path, json);
         }
+    }
+}
+
+// ── Page metadata store ──
+
+struct PageMetaStore {
+    path: PathBuf,
+    pages_dir: PathBuf,
+    data: Mutex<Vec<PageMeta>>,
+}
+
+impl PageMetaStore {
+    fn new(data_dir: &std::path::Path) -> Self {
+        let path = data_dir.join("pages_meta.json");
+        let pages_dir = data_dir.join("pages");
+        let data = if path.exists() {
+            fs::read_to_string(&path)
+                .ok()
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        Self {
+            path,
+            pages_dir,
+            data: Mutex::new(data),
+        }
+    }
+
+    fn save(&self) {
+        let data = self.data.lock().unwrap();
+        if let Ok(json) = serde_json::to_string_pretty(&*data) {
+            let _ = fs::create_dir_all(self.path.parent().unwrap());
+            let _ = fs::write(&self.path, json);
+        }
+    }
+
+    fn upsert(&self, meta: PageMeta) {
+        let mut data = self.data.lock().unwrap();
+        if let Some(existing) = data.iter_mut().find(|m| m.id == meta.id) {
+            existing.title = meta.title;
+            existing.updated_at = meta.updated_at;
+        } else {
+            data.push(meta);
+        }
+        drop(data);
+        self.save();
+    }
+
+    fn remove(&self, page_id: &str) {
+        let mut data = self.data.lock().unwrap();
+        data.retain(|m| m.id != page_id);
+        drop(data);
+        self.save();
+    }
+}
+
+fn infer_page_type(id: &str) -> PageType {
+    if id.starts_with("todo_") || id.starts_with("sub_") {
+        PageType::Task
+    } else if id.starts_with("daily_") {
+        PageType::Daily
+    } else {
+        PageType::Note
+    }
+}
+
+fn format_daily_title(id: &str) -> String {
+    // id is like "daily_2026-03-10"
+    let date_str = id.strip_prefix("daily_").unwrap_or(id);
+    // Parse and format nicely
+    if let Ok(date) = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
+        date.format("%a, %b %-d, %Y").to_string()
+    } else {
+        date_str.to_string()
     }
 }
 
@@ -420,15 +516,63 @@ fn load_page(store: tauri::State<DataStore>, task_id: String) -> String {
 }
 
 #[tauri::command]
-fn save_page(store: tauri::State<DataStore>, task_id: String, content: String) {
+fn save_page(
+    store: tauri::State<DataStore>,
+    page_meta_store: tauri::State<PageMetaStore>,
+    task_id: String,
+    content: String,
+) {
     let pages_dir = store.path.parent().unwrap().join("pages");
     let _ = fs::create_dir_all(&pages_dir);
     let page_path = pages_dir.join(format!("{}.txt", task_id));
     let _ = fs::write(page_path, content);
+
+    // Upsert page metadata
+    let now = now_ms();
+    let page_type = infer_page_type(&task_id);
+    let title = match page_type {
+        PageType::Task => {
+            let data = store.data.lock().unwrap();
+            data.todos
+                .iter()
+                .find(|t| t.id == task_id)
+                .map(|t| t.title.clone())
+                .unwrap_or_else(|| {
+                    // Check if metadata already has a title
+                    let meta = page_meta_store.data.lock().unwrap();
+                    meta.iter()
+                        .find(|m| m.id == task_id)
+                        .map(|m| m.title.clone())
+                        .unwrap_or_else(|| task_id.clone())
+                })
+        }
+        PageType::Daily => format_daily_title(&task_id),
+        PageType::Note => {
+            // For notes, preserve existing title
+            let meta = page_meta_store.data.lock().unwrap();
+            meta.iter()
+                .find(|m| m.id == task_id)
+                .map(|m| m.title.clone())
+                .unwrap_or_else(|| "Untitled".to_string())
+        }
+    };
+
+    page_meta_store.upsert(PageMeta {
+        id: task_id,
+        title,
+        page_type,
+        created_at: now, // Will be ignored if entry already exists (upsert only updates title + updated_at)
+        updated_at: now,
+    });
 }
 
 #[tauri::command]
-fn delete_page(store: tauri::State<DataStore>, app: AppHandle, task_id: String) {
+fn delete_page(
+    store: tauri::State<DataStore>,
+    page_meta_store: tauri::State<PageMetaStore>,
+    app: AppHandle,
+    task_id: String,
+) {
     // Close page window if open
     let label = format!("page_{}", task_id);
     if let Some(win) = app.get_webview_window(&label) {
@@ -438,6 +582,251 @@ fn delete_page(store: tauri::State<DataStore>, app: AppHandle, task_id: String) 
     let pages_dir = store.path.parent().unwrap().join("pages");
     let page_path = pages_dir.join(format!("{}.txt", task_id));
     let _ = fs::remove_file(page_path);
+    // Remove metadata
+    page_meta_store.remove(&task_id);
+}
+
+// ── Pages browser commands ──
+
+#[tauri::command]
+fn list_all_pages(
+    store: tauri::State<DataStore>,
+    page_meta_store: tauri::State<PageMetaStore>,
+) -> Vec<PageMeta> {
+    let pages_dir = &page_meta_store.pages_dir;
+    let _ = fs::create_dir_all(pages_dir);
+
+    // Collect all .txt files in pages dir
+    let mut file_ids: Vec<String> = Vec::new();
+    if let Ok(entries) = fs::read_dir(pages_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("txt") {
+                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                    file_ids.push(stem.to_string());
+                }
+            }
+        }
+    }
+
+    let now = now_ms();
+    let app_data = store.data.lock().unwrap();
+    let mut meta_data = page_meta_store.data.lock().unwrap();
+    let mut changed = false;
+
+    // Backfill metadata for any files that don't have entries
+    for file_id in &file_ids {
+        if !meta_data.iter().any(|m| m.id == *file_id) {
+            let page_type = infer_page_type(file_id);
+            let title = match page_type {
+                PageType::Task => app_data
+                    .todos
+                    .iter()
+                    .find(|t| t.id == *file_id)
+                    .map(|t| t.title.clone())
+                    .unwrap_or_else(|| file_id.clone()),
+                PageType::Daily => format_daily_title(file_id),
+                PageType::Note => "Untitled".to_string(),
+            };
+
+            // Get file modification time as a rough created_at
+            let file_path = pages_dir.join(format!("{}.txt", file_id));
+            let modified = fs::metadata(&file_path)
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(now);
+
+            meta_data.push(PageMeta {
+                id: file_id.clone(),
+                title,
+                page_type,
+                created_at: modified,
+                updated_at: modified,
+            });
+            changed = true;
+        }
+    }
+
+    // Remove metadata entries for files that no longer exist
+    let before_len = meta_data.len();
+    meta_data.retain(|m| file_ids.contains(&m.id));
+    if meta_data.len() != before_len {
+        changed = true;
+    }
+
+    // Update task page titles from current todo data
+    for meta in meta_data.iter_mut() {
+        if meta.page_type == PageType::Task {
+            if let Some(todo) = app_data.todos.iter().find(|t| t.id == meta.id) {
+                if meta.title != todo.title {
+                    meta.title = todo.title.clone();
+                    changed = true;
+                }
+            }
+        }
+    }
+
+    let mut result = meta_data.clone();
+    drop(meta_data);
+    drop(app_data);
+
+    if changed {
+        page_meta_store.save();
+    }
+
+    // Sort by updated_at descending
+    result.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    result
+}
+
+#[tauri::command]
+fn create_note_page(page_meta_store: tauri::State<PageMetaStore>) -> PageMeta {
+    let now = now_ms();
+    let rand: String = (0..6)
+        .map(|_| {
+            let idx = (now as usize + rand_simple()) % 36;
+            "abcdefghijklmnopqrstuvwxyz0123456789"
+                .chars()
+                .nth(idx)
+                .unwrap()
+        })
+        .collect();
+    let id = format!("note_{}_{}", now, rand);
+
+    // Create empty file
+    let _ = fs::create_dir_all(&page_meta_store.pages_dir);
+    let page_path = page_meta_store.pages_dir.join(format!("{}.txt", id));
+    let _ = fs::write(&page_path, "");
+
+    let meta = PageMeta {
+        id: id.clone(),
+        title: "Untitled".to_string(),
+        page_type: PageType::Note,
+        created_at: now,
+        updated_at: now,
+    };
+
+    page_meta_store.upsert(meta.clone());
+    meta
+}
+
+fn rand_simple() -> usize {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    std::time::SystemTime::now().hash(&mut hasher);
+    std::thread::current().id().hash(&mut hasher);
+    hasher.finish() as usize
+}
+
+#[tauri::command]
+fn rename_page(page_meta_store: tauri::State<PageMetaStore>, page_id: String, title: String) {
+    let mut data = page_meta_store.data.lock().unwrap();
+    if let Some(meta) = data.iter_mut().find(|m| m.id == page_id && m.page_type == PageType::Note) {
+        meta.title = title;
+        meta.updated_at = now_ms();
+    }
+    drop(data);
+    page_meta_store.save();
+}
+
+#[tauri::command]
+fn search_pages(
+    page_meta_store: tauri::State<PageMetaStore>,
+    query: String,
+) -> Vec<PageMeta> {
+    let query_lower = query.to_lowercase();
+    let pages_dir_path = &page_meta_store.pages_dir;
+    let meta_data = page_meta_store.data.lock().unwrap();
+    let mut results: Vec<PageMeta> = Vec::new();
+
+    for meta in meta_data.iter() {
+        let title_match = meta.title.to_lowercase().contains(&query_lower);
+        let content_match = if !title_match {
+            let page_path = pages_dir_path.join(format!("{}.txt", meta.id));
+            fs::read_to_string(page_path)
+                .map(|c| c.to_lowercase().contains(&query_lower))
+                .unwrap_or(false)
+        } else {
+            false
+        };
+
+        if title_match || content_match {
+            results.push(meta.clone());
+        }
+    }
+
+    drop(meta_data);
+    results.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    results
+}
+
+#[tauri::command]
+fn check_page_window_open(app: AppHandle, page_id: String) -> bool {
+    let label = format!("page_{}", page_id);
+    app.get_webview_window(&label).is_some()
+}
+
+#[tauri::command]
+fn focus_page_window(app: AppHandle, page_id: String) {
+    let label = format!("page_{}", page_id);
+    if let Some(win) = app.get_webview_window(&label) {
+        let _ = win.show();
+        let _ = win.set_focus();
+    }
+}
+
+#[tauri::command]
+fn open_pages_browser(app: AppHandle) -> Result<(), String> {
+    let label = "pages_browser";
+
+    // If window already exists, just focus it
+    if let Some(win) = app.get_webview_window(label) {
+        let _ = win.show();
+        let _ = win.set_focus();
+        return Ok(());
+    }
+
+    let url = tauri::WebviewUrl::App("pages_browser.html".into());
+
+    let mut builder = tauri::WebviewWindowBuilder::new(&app, label, url)
+        .title("All Pages")
+        .inner_size(560.0, 640.0)
+        .min_inner_size(400.0, 400.0);
+
+    // Position relative to main window
+    if let Some(main_win) = app.get_webview_window("main") {
+        if let (Ok(pos), Ok(size), Ok(Some(monitor))) =
+            (main_win.outer_position(), main_win.outer_size(), main_win.current_monitor())
+        {
+            let scale = monitor.scale_factor();
+            let main_x = pos.x as f64 / scale;
+            let main_y = pos.y as f64 / scale;
+            let main_w = size.width as f64 / scale;
+            let mon_pos = monitor.position();
+            let mon_size = monitor.size();
+            let mon_right = mon_pos.x as f64 / scale + mon_size.width as f64 / scale;
+
+            let gap = 36.0;
+            let page_w = 560.0;
+            let page_y = main_y;
+
+            let page_x = if main_x + main_w + gap + page_w <= mon_right {
+                main_x + main_w + gap
+            } else {
+                main_x - page_w - gap
+            };
+
+            builder = builder.position(page_x, page_y);
+        }
+    } else {
+        builder = builder.center();
+    }
+
+    builder.build().map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 // ── App entry point ──
@@ -450,8 +839,10 @@ pub fn run() {
             fs::create_dir_all(&data_dir)?;
             let data_path = data_dir.join("data.json");
             let store = DataStore::new(data_path);
+            let page_meta_store = PageMetaStore::new(&data_dir);
 
             app.manage(store);
+            app.manage(page_meta_store);
 
             // System tray
             use tauri::menu::{Menu, MenuItem};
@@ -496,6 +887,13 @@ pub fn run() {
             load_page,
             save_page,
             delete_page,
+            list_all_pages,
+            create_note_page,
+            rename_page,
+            search_pages,
+            check_page_window_open,
+            focus_page_window,
+            open_pages_browser,
         ])
         .on_window_event(|window, event| {
             match event {

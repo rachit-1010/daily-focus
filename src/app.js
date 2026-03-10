@@ -152,6 +152,11 @@
     invoke('open_page_window', { taskId: `daily_${todayStr()}` });
   });
 
+  const allPagesBtn = document.getElementById('all-pages-btn');
+  allPagesBtn.addEventListener('click', () => {
+    invoke('open_pages_browser');
+  });
+
   compactToggleBtn.addEventListener('click', () => toggleMode(true));
   expandToggleBtn.addEventListener('click', () => toggleMode(false));
 

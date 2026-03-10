@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="pages_browser.css">
+  <title>All Pages</title>
+</head>
+<body>
+
+  <!-- ── List View ── -->
+  <div class="list-view" id="list-view">
+    <div class="browser-toolbar">
+      <div class="browser-title-row">
+        <span class="browser-title">All Pages</span>
+        <button class="new-note-btn" id="new-note-btn">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+          New Note
+        </button>
+      </div>
+
+      <div class="search-wrap">
+        <svg class="search-icon" width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <circle cx="6" cy="6" r="4.5" stroke="currentColor" stroke-width="1.3"/>
+          <path d="M9.5 9.5L12.5 12.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+        </svg>
+        <input type="text" class="search-input" id="search-input" placeholder="Search pages..." autocomplete="off">
+      </div>
+
+      <div class="filter-tabs" id="filter-tabs">
+        <button class="filter-tab active" data-filter="all">All</button>
+        <button class="filter-tab" data-filter="task">Tasks</button>
+        <button class="filter-tab" data-filter="daily">Days</button>
+        <button class="filter-tab" data-filter="note">Notes</button>
+      </div>
+    </div>
+
+    <div class="page-list" id="page-list"></div>
+
+    <div class="empty-state" id="empty-state" style="display:none">
+      <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+        <rect x="10" y="8" width="22" height="30" rx="3" stroke="#e2e8f0" stroke-width="2" fill="none"/>
+        <path d="M16 18h10M16 23h7" stroke="#cbd5e1" stroke-width="1.5" stroke-linecap="round"/>
+        <rect x="16" y="12" width="18" height="26" rx="3" stroke="#e2e8f0" stroke-width="2" fill="none"/>
+      </svg>
+      <p id="empty-state-text">No pages yet. Create a note to get started.</p>
+    </div>
+  </div>
+
+  <!-- ── Editor View ── -->
+  <div class="editor-view hidden" id="editor-view">
+    <div class="editor-toolbar">
+      <button class="back-btn" id="back-btn" title="Back to list">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <div class="editor-title-wrap">
+        <span class="editor-title-display" id="editor-title-display"></span>
+        <input type="text" class="editor-title-input" id="editor-title-input" style="display:none" placeholder="Untitled">
+      </div>
+      <span class="editor-type-badge" id="editor-type-badge"></span>
+    </div>
+    <div class="editor-wrap">
+      <textarea class="editor-textarea" id="editor-textarea" placeholder="Write your notes here..." spellcheck="true"></textarea>
+    </div>
+    <div class="editor-status" id="editor-status"></div>
+  </div>
+
+  <script>
+  (function () {
+    'use strict';
+
+    const { invoke } = window.__TAURI__.core;
+
+    // ── State ──
+
+    let allPages = [];
+    let activeFilter = 'all';
+    let searchQuery = '';
+    let searchTimer = null;
+    let currentPageId = null;
+    let currentPageMeta = null;
+    let saveTimer = null;
+
+    // ── DOM refs ──
+
+    const listView = document.getElementById('list-view');
+    const editorView = document.getElementById('editor-view');
+    const pageList = document.getElementById('page-list');
+    const emptyState = document.getElementById('empty-state');
+    const emptyStateText = document.getElementById('empty-state-text');
+    const searchInput = document.getElementById('search-input');
+    const filterTabs = document.getElementById('filter-tabs');
+    const newNoteBtn = document.getElementById('new-note-btn');
+    const backBtn = document.getElementById('back-btn');
+    const editorTitleDisplay = document.getElementById('editor-title-display');
+    const editorTitleInput = document.getElementById('editor-title-input');
+    const editorTypeBadge = document.getElementById('editor-type-badge');
+    const editorTextarea = document.getElementById('editor-textarea');
+    const editorStatus = document.getElementById('editor-status');
+
+    // ── SVG icons ──
+
+    const taskIconSvg = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.3" fill="none"/><path d="M5.5 8l2 2 3.5-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    const dailyIconSvg = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2.5" y="3" width="11" height="10.5" rx="1.5" stroke="currentColor" stroke-width="1.3" fill="none"/><path d="M2.5 6.5h11" stroke="currentColor" stroke-width="1.3"/><path d="M5.5 1.5v3M10.5 1.5v3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>';
+    const noteIconSvg = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4.5 1.5h5l3.5 3.5v8.5a1.5 1.5 0 01-1.5 1.5h-7A1.5 1.5 0 013 13.5V3a1.5 1.5 0 011.5-1.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none"/><path d="M9.5 1.5V5.5h4" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
+    const chevronSvg = '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M3 1l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>';
+    const deleteSvg = '<svg width="14" height="14" viewBox="0 0 14 14"><path d="M4 4l6 6M10 4l-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+
+    // ── Helpers ──
+
+    function getIconForType(type) {
+      if (type === 'task') return taskIconSvg;
+      if (type === 'daily') return dailyIconSvg;
+      return noteIconSvg;
+    }
+
+    function getBadgeLabel(type) {
+      if (type === 'task') return 'Task';
+      if (type === 'daily') return 'Day';
+      return 'Note';
+    }
+
+    function formatRelativeDate(ms) {
+      const now = Date.now();
+      const diff = now - ms;
+      const minutes = Math.floor(diff / 60000);
+      const hours = Math.floor(diff / 3600000);
+      const days = Math.floor(diff / 86400000);
+
+      if (minutes < 1) return 'Just now';
+      if (minutes < 60) return `${minutes}m ago`;
+      if (hours < 24) return `${hours}h ago`;
+      if (days < 7) return `${days}d ago`;
+      const d = new Date(ms);
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    // ── Load pages ──
+
+    async function loadPages() {
+      try {
+        allPages = await invoke('list_all_pages');
+      } catch (e) {
+        console.error('Failed to load pages:', e);
+        allPages = [];
+      }
+      renderList();
+    }
+
+    // ── Filter & search ──
+
+    function getFilteredPages() {
+      let pages = allPages;
+
+      // Apply type filter
+      if (activeFilter !== 'all') {
+        pages = pages.filter(p => p.pageType === activeFilter);
+      }
+
+      // Apply search (title only for instant results)
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        pages = pages.filter(p => p.title.toLowerCase().includes(q));
+      }
+
+      return pages;
+    }
+
+    // ── Render list ──
+
+    function renderList() {
+      const pages = getFilteredPages();
+      pageList.innerHTML = '';
+
+      if (pages.length === 0) {
+        emptyState.style.display = '';
+        if (searchQuery) {
+          emptyStateText.textContent = `No pages matching "${searchQuery}"`;
+        } else if (activeFilter !== 'all') {
+          const labels = { task: 'task', daily: 'day', note: 'note' };
+          emptyStateText.textContent = `No ${labels[activeFilter]} pages found.`;
+        } else {
+          emptyStateText.textContent = 'No pages yet. Create a note to get started.';
+        }
+        return;
+      }
+
+      emptyState.style.display = 'none';
+
+      pages.forEach(page => {
+        const row = document.createElement('div');
+        row.className = 'page-row';
+
+        // Icon
+        const icon = document.createElement('div');
+        icon.className = `page-row-icon type-${page.pageType}`;
+        icon.innerHTML = getIconForType(page.pageType);
+
+        // Content
+        const content = document.createElement('div');
+        content.className = 'page-row-content';
+
+        const title = document.createElement('div');
+        title.className = 'page-row-title';
+        title.textContent = page.title;
+
+        const meta = document.createElement('div');
+        meta.className = 'page-row-meta';
+
+        const badge = document.createElement('span');
+        badge.className = `page-type-badge type-${page.pageType}`;
+        badge.textContent = getBadgeLabel(page.pageType);
+
+        const date = document.createElement('span');
+        date.className = 'page-row-date';
+        date.textContent = formatRelativeDate(page.updatedAt);
+
+        meta.appendChild(badge);
+        meta.appendChild(date);
+        content.appendChild(title);
+        content.appendChild(meta);
+
+        // Chevron
+        const chevron = document.createElement('div');
+        chevron.className = 'page-row-chevron';
+        chevron.innerHTML = chevronSvg;
+
+        // Delete button (for note pages only, or all pages)
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'page-row-delete';
+        deleteBtn.innerHTML = deleteSvg;
+        deleteBtn.title = 'Delete page';
+        deleteBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          await invoke('delete_page', { taskId: page.id });
+          await loadPages();
+        });
+
+        row.appendChild(icon);
+        row.appendChild(content);
+        row.appendChild(chevron);
+        row.appendChild(deleteBtn);
+
+        row.addEventListener('click', () => openPage(page));
+        pageList.appendChild(row);
+      });
+    }
+
+    // ── Search handler ──
+
+    searchInput.addEventListener('input', () => {
+      searchQuery = searchInput.value.trim();
+
+      // Instant title-based filtering
+      renderList();
+
+      // Debounced content search
+      clearTimeout(searchTimer);
+      if (searchQuery.length >= 2) {
+        searchTimer = setTimeout(async () => {
+          try {
+            const results = await invoke('search_pages', { query: searchQuery });
+            // Merge: keep allPages but reorder to put search results first
+            const resultIds = new Set(results.map(r => r.id));
+            const searchFiltered = results.concat(
+              allPages.filter(p => !resultIds.has(p.id))
+            );
+            // Only replace the rendered list with search-aware ordering
+            const q = searchQuery.toLowerCase();
+            const pages = searchFiltered.filter(p => {
+              if (activeFilter !== 'all' && p.pageType !== activeFilter) return false;
+              return resultIds.has(p.id);
+            });
+
+            pageList.innerHTML = '';
+            if (pages.length === 0) {
+              emptyState.style.display = '';
+              emptyStateText.textContent = `No pages matching "${searchQuery}"`;
+              return;
+            }
+            emptyState.style.display = 'none';
+            pages.forEach(page => {
+              const row = createPageRow(page);
+              pageList.appendChild(row);
+            });
+          } catch (e) {
+            console.error('Search failed:', e);
+          }
+        }, 300);
+      }
+    });
+
+    function createPageRow(page) {
+      const row = document.createElement('div');
+      row.className = 'page-row';
+
+      const icon = document.createElement('div');
+      icon.className = `page-row-icon type-${page.pageType}`;
+      icon.innerHTML = getIconForType(page.pageType);
+
+      const content = document.createElement('div');
+      content.className = 'page-row-content';
+
+      const title = document.createElement('div');
+      title.className = 'page-row-title';
+      title.textContent = page.title;
+
+      const meta = document.createElement('div');
+      meta.className = 'page-row-meta';
+
+      const badge = document.createElement('span');
+      badge.className = `page-type-badge type-${page.pageType}`;
+      badge.textContent = getBadgeLabel(page.pageType);
+
+      const date = document.createElement('span');
+      date.className = 'page-row-date';
+      date.textContent = formatRelativeDate(page.updatedAt);
+
+      meta.appendChild(badge);
+      meta.appendChild(date);
+      content.appendChild(title);
+      content.appendChild(meta);
+
+      const chevron = document.createElement('div');
+      chevron.className = 'page-row-chevron';
+      chevron.innerHTML = chevronSvg;
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'page-row-delete';
+      deleteBtn.innerHTML = deleteSvg;
+      deleteBtn.title = 'Delete page';
+      deleteBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await invoke('delete_page', { taskId: page.id });
+        await loadPages();
+      });
+
+      row.appendChild(icon);
+      row.appendChild(content);
+      row.appendChild(chevron);
+      row.appendChild(deleteBtn);
+
+      row.addEventListener('click', () => openPage(page));
+      return row;
+    }
+
+    // ── Filter tabs ──
+
+    filterTabs.addEventListener('click', (e) => {
+      const tab = e.target.closest('.filter-tab');
+      if (!tab) return;
+      activeFilter = tab.dataset.filter;
+      filterTabs.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      renderList();
+    });
+
+    // ── New note ──
+
+    newNoteBtn.addEventListener('click', async () => {
+      try {
+        const meta = await invoke('create_note_page');
+        await loadPages();
+        openPage(meta);
+      } catch (e) {
+        console.error('Failed to create note:', e);
+      }
+    });
+
+    // ── Open page ──
+
+    async function openPage(pageMeta) {
+      // Check if a standalone page window is already open for this page
+      try {
+        const isOpen = await invoke('check_page_window_open', { pageId: pageMeta.id });
+        if (isOpen) {
+          await invoke('focus_page_window', { pageId: pageMeta.id });
+          return;
+        }
+      } catch (e) {
+        // Ignore — proceed to open inline
+      }
+
+      currentPageId = pageMeta.id;
+      currentPageMeta = pageMeta;
+
+      // Load content
+      let content = '';
+      try {
+        content = await invoke('load_page', { taskId: pageMeta.id });
+      } catch (e) {
+        console.error('Failed to load page:', e);
+      }
+
+      // Setup editor
+      editorTextarea.value = content;
+
+      // Title
+      if (pageMeta.pageType === 'note') {
+        editorTitleDisplay.style.display = 'none';
+        editorTitleInput.style.display = '';
+        editorTitleInput.value = pageMeta.title;
+      } else {
+        editorTitleDisplay.style.display = '';
+        editorTitleInput.style.display = 'none';
+        editorTitleDisplay.textContent = pageMeta.title;
+      }
+
+      // Type badge
+      editorTypeBadge.textContent = getBadgeLabel(pageMeta.pageType);
+      editorTypeBadge.className = `editor-type-badge page-type-badge type-${pageMeta.pageType}`;
+
+      // Switch views
+      listView.classList.add('hidden');
+      editorView.classList.remove('hidden');
+      editorTextarea.focus();
+      editorStatus.textContent = '';
+    }
+
+    // ── Back button ──
+
+    backBtn.addEventListener('click', async () => {
+      await saveCurrentPage();
+      currentPageId = null;
+      currentPageMeta = null;
+
+      editorView.classList.add('hidden');
+      listView.classList.remove('hidden');
+
+      // Refresh list
+      await loadPages();
+    });
+
+    // ── Auto-save with debounce ──
+
+    function scheduleSave() {
+      clearTimeout(saveTimer);
+      editorStatus.textContent = '';
+      saveTimer = setTimeout(async () => {
+        await saveCurrentPage();
+        editorStatus.textContent = 'Saved';
+        setTimeout(() => { editorStatus.textContent = ''; }, 1500);
+      }, 400);
+    }
+
+    async function saveCurrentPage() {
+      if (!currentPageId) return;
+      try {
+        await invoke('save_page', { taskId: currentPageId, content: editorTextarea.value });
+      } catch (e) {
+        console.error('Failed to save page:', e);
+      }
+    }
+
+    editorTextarea.addEventListener('input', scheduleSave);
+
+    // ── Title rename for notes ──
+
+    editorTitleInput.addEventListener('blur', async () => {
+      if (!currentPageMeta || currentPageMeta.pageType !== 'note') return;
+      const newTitle = editorTitleInput.value.trim() || 'Untitled';
+      if (newTitle !== currentPageMeta.title) {
+        currentPageMeta.title = newTitle;
+        try {
+          await invoke('rename_page', { pageId: currentPageId, title: newTitle });
+        } catch (e) {
+          console.error('Failed to rename page:', e);
+        }
+      }
+    });
+
+    editorTitleInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        editorTextarea.focus();
+      }
+    });
+
+    // ── Tab key inserts spaces ──
+
+    editorTextarea.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const start = editorTextarea.selectionStart;
+        const end = editorTextarea.selectionEnd;
+        editorTextarea.value = editorTextarea.value.substring(0, start) + '  ' + editorTextarea.value.substring(end);
+        editorTextarea.selectionStart = editorTextarea.selectionEnd = start + 2;
+        scheduleSave();
+      }
+    });
+
+    // ── Save before close ──
+
+    window.addEventListener('beforeunload', () => {
+      clearTimeout(saveTimer);
+      if (currentPageId) {
+        invoke('save_page', { taskId: currentPageId, content: editorTextarea.value });
+      }
+    });
+
+    // ── Init ──
+
+    loadPages();
+  })();
+  </script>
+</body>
+</html>
