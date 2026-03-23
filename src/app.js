@@ -30,6 +30,43 @@
     return total;
   }
 
+  function getTodayElapsedSeconds(todo) {
+    const logs = todo.timeLogs || [];
+    if (logs.length === 0) return 0;
+
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayMs = todayStart.getTime();
+
+    let total = 0;
+    let openStart = null;
+
+    for (const log of logs) {
+      if (log.event === 'start') {
+        openStart = log.timestamp;
+      } else if ((log.event === 'pause' || log.event === 'complete') && openStart != null) {
+        const boutStart = Math.max(openStart, todayMs);
+        const boutEnd = log.timestamp;
+        if (boutEnd > todayMs) {
+          total += Math.max(0, boutEnd - boutStart);
+        }
+        openStart = null;
+      }
+    }
+
+    // If timer is still running (last event was a start with no close)
+    if (openStart != null) {
+      const boutStart = Math.max(openStart, todayMs);
+      total += Math.max(0, Date.now() - boutStart);
+    }
+
+    return Math.floor(total / 1000);
+  }
+
+  function getTotalTodaySeconds() {
+    return todos.reduce((sum, t) => sum + getTodayElapsedSeconds(t), 0);
+  }
+
   function formatTimer(elapsedSec, estimateMin) {
     const hh = Math.floor(elapsedSec / 3600);
     const mm = Math.floor((elapsedSec % 3600) / 60);
@@ -97,7 +134,7 @@
   const dayResetBanner = document.getElementById('day-reset-banner');
   const resetClearBtn = document.getElementById('reset-clear');
   const resetKeepBtn = document.getElementById('reset-keep');
-  const compactToggleBtn = document.getElementById('compact-toggle-btn');
+  const headerTotalTime = document.getElementById('header-total-time');
   const headerDragHandle = document.getElementById('header-drag-handle');
 
   // ── DOM refs (compact mode) ──
@@ -157,7 +194,6 @@
     invoke('open_pages_browser');
   });
 
-  compactToggleBtn.addEventListener('click', () => toggleMode(true));
   expandToggleBtn.addEventListener('click', () => toggleMode(false));
 
   compactPauseBtn.addEventListener('click', async () => {
@@ -219,6 +255,16 @@
       fullTimer.textContent = text;
       fullTimer.classList.toggle('over-time', overTime);
     }
+
+    // Update header total time
+    updateHeaderTotalTime();
+  }
+
+  function updateHeaderTotalTime() {
+    const totalSec = getTotalTodaySeconds();
+    const hh = Math.floor(totalSec / 3600);
+    const mm = Math.floor((totalSec % 3600) / 60);
+    headerTotalTime.textContent = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
   }
 
   // ══════════════════════════════════════════
@@ -803,13 +849,7 @@
         actions.appendChild(playBtn);
       }
 
-      // Delete button
-      const deleteBtn = document.createElement('button');
-      deleteBtn.className = 'action-btn delete-btn';
-      deleteBtn.innerHTML = deleteSvg;
-      deleteBtn.title = 'Delete';
-      deleteBtn.addEventListener('click', () => deleteTodo(todo.id));
-      actions.appendChild(deleteBtn);
+      // Delete button moved to detail section
 
       main.appendChild(grip);
       main.appendChild(expandBtn);
@@ -986,6 +1026,15 @@
       subSection.appendChild(addSubDiv);
       detail.appendChild(subSection);
 
+      const deleteRow = document.createElement('div');
+      deleteRow.className = 'detail-delete-row';
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'detail-delete-btn';
+      deleteBtn.innerHTML = deleteSvg + ' Delete task';
+      deleteBtn.addEventListener('click', () => deleteTodo(todo.id));
+      deleteRow.appendChild(deleteBtn);
+      detail.appendChild(deleteRow);
+
       item.appendChild(detail);
       todoList.appendChild(item);
     });
@@ -998,6 +1047,9 @@
     } else {
       footer.classList.add('hidden');
     }
+
+    // Header total time
+    updateHeaderTotalTime();
   }
 
   // ══════════════════════════════════════════

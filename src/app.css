@@ -94,6 +94,14 @@ body.mode-compact { background: transparent; }
   font-weight: 500;
 }
 
+.header-total-time {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6366f1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .mode-toggle-btn {
   width: 28px;
   height: 28px;
@@ -439,14 +447,32 @@ body.mode-compact { background: transparent; }
   opacity: 1;
 }
 
-/* Delete button stays hidden until hover */
-.todo-actions .delete-btn {
-  opacity: 0;
-  transition: opacity 0.15s;
+/* Delete button in detail section */
+.detail-delete-row {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #f1f5f9;
+  display: flex;
+  justify-content: flex-end;
 }
 
-.todo-main:hover .todo-actions .delete-btn {
-  opacity: 1;
+.detail-delete-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: #94a3b8;
+  font-size: 12px;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.detail-delete-btn:hover {
+  background: #fef2f2;
+  color: #ef4444;
 }
 
 /* ── Timer Display (inline on in-progress task) ── */
@@ -508,11 +534,6 @@ body.mode-compact { background: transparent; }
 
 .action-btn.play-btn.active:hover {
   background: #4f46e5;
-}
-
-.action-btn.delete-btn:hover {
-  background: #fef2f2;
-  color: #ef4444;
 }
 
 .action-btn.page-btn {

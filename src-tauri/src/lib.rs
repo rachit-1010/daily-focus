@@ -71,6 +71,8 @@ struct Todo {
     elapsed_seconds: u64,
     #[serde(default)]
     timer_started_at: Option<u64>,
+    #[serde(default)]
+    time_logs: Vec<TimeLog>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -84,6 +86,13 @@ struct SubItem {
     order: usize,
     #[serde(default)]
     estimated_minutes: Option<u32>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+struct TimeLog {
+    event: String,       // "start", "pause", "complete"
+    timestamp: u64,      // milliseconds since epoch
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -266,6 +275,7 @@ fn set_in_progress(store: tauri::State<DataStore>, todo_id: Option<String>) {
                 }
                 todo.timer_started_at = None;
                 todo.in_progress = false;
+                todo.time_logs.push(TimeLog { event: "pause".into(), timestamp: now });
             }
         }
 
@@ -274,6 +284,7 @@ fn set_in_progress(store: tauri::State<DataStore>, todo_id: Option<String>) {
             if let Some(todo) = data.todos.iter_mut().find(|t| t.id == *id) {
                 todo.in_progress = true;
                 todo.timer_started_at = Some(now);
+                todo.time_logs.push(TimeLog { event: "start".into(), timestamp: now });
             }
         }
 
@@ -295,6 +306,7 @@ fn complete_task(store: tauri::State<DataStore>, task_id: String) {
                 todo.elapsed_seconds += (now - started) / 1000;
             }
             todo.timer_started_at = None;
+            todo.time_logs.push(TimeLog { event: "complete".into(), timestamp: now });
         }
         data.current_task_id = None;
     }
@@ -347,6 +359,7 @@ fn archive_todos(store: tauri::State<DataStore>, mode: String) {
             if let Some(started) = todo.timer_started_at {
                 todo.elapsed_seconds += (now - started) / 1000;
                 todo.timer_started_at = None;
+                todo.time_logs.push(TimeLog { event: "pause".into(), timestamp: now });
             }
             todo.in_progress = false;
 
