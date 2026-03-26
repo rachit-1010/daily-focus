@@ -61,10 +61,15 @@
         <span class="editor-title-display" id="editor-title-display"></span>
         <input type="text" class="editor-title-input" id="editor-title-input" style="display:none" placeholder="Untitled">
       </div>
+      <div class="page-view-toggle" id="browser-view-toggle">
+        <button class="view-btn active" data-view="notes">Notes</button>
+        <button class="view-btn" data-view="timeline">Timeline</button>
+      </div>
       <span class="editor-type-badge" id="editor-type-badge"></span>
     </div>
     <div class="editor-wrap">
       <textarea class="editor-textarea" id="editor-textarea" placeholder="Write your notes here..." spellcheck="true"></textarea>
+      <div class="timeline-container" id="browser-timeline-container" style="display:none"></div>
     </div>
     <div class="editor-status" id="editor-status"></div>
   </div>
@@ -414,6 +419,14 @@
       editorTypeBadge.textContent = getBadgeLabel(pageMeta.pageType);
       editorTypeBadge.className = `editor-type-badge page-type-badge type-${pageMeta.pageType}`;
 
+      // Reset to notes view
+      browserCurrentView = 'notes';
+      browserViewToggle.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+      browserViewToggle.querySelector('[data-view="notes"]').classList.add('active');
+      editorTextarea.style.display = '';
+      browserTimelineContainer.style.display = 'none';
+      stopBrowserTimelinePoll();
+
       // Switch views
       listView.classList.add('hidden');
       editorView.classList.remove('hidden');
@@ -500,7 +513,238 @@
       if (currentPageId) {
         invoke('save_page', { taskId: currentPageId, content: editorTextarea.value });
       }
+      stopBrowserTimelinePoll();
     });
+
+    // ── Timeline in browser editor ──
+
+    const browserViewToggle = document.getElementById('browser-view-toggle');
+    const browserTimelineContainer = document.getElementById('browser-timeline-container');
+    let browserCurrentView = 'notes';
+    let browserTimelinePollInterval = null;
+
+    function formatTimeShort(ms) {
+      const d = new Date(ms);
+      let h = d.getHours();
+      const m = d.getMinutes();
+      const ampm = h >= 12 ? 'p' : 'a';
+      h = h % 12 || 12;
+      return m === 0 ? `${h}${ampm}` : `${h}:${String(m).padStart(2, '0')}${ampm}`;
+    }
+
+    function formatDuration(ms) {
+      const totalMin = Math.floor(ms / 60000);
+      if (totalMin < 60) return `${totalMin}m`;
+      const h = Math.floor(totalMin / 60);
+      const m = totalMin % 60;
+      return m > 0 ? `${h}h ${m}m` : `${h}h`;
+    }
+
+    function formatDayLabel(ms) {
+      const d = new Date(ms);
+      return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    }
+
+    browserViewToggle.addEventListener('click', (e) => {
+      const btn = e.target.closest('.view-btn');
+      if (!btn || btn.dataset.view === browserCurrentView) return;
+
+      browserCurrentView = btn.dataset.view;
+      browserViewToggle.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      if (browserCurrentView === 'timeline') {
+        editorTextarea.style.display = 'none';
+        browserTimelineContainer.style.display = '';
+        loadBrowserTimeline();
+      } else {
+        editorTextarea.style.display = '';
+        browserTimelineContainer.style.display = 'none';
+        stopBrowserTimelinePoll();
+      }
+    });
+
+    function stopBrowserTimelinePoll() {
+      if (browserTimelinePollInterval) {
+        clearInterval(browserTimelinePollInterval);
+        browserTimelinePollInterval = null;
+      }
+    }
+
+    async function loadBrowserTimeline() {
+      if (!currentPageId) return;
+      try {
+        const bouts = await invoke('load_timeline', { taskId: currentPageId });
+        const isDaily = currentPageId.startsWith('daily_');
+        if (isDaily) {
+          renderBrowserDailyTimeline(bouts);
+        } else {
+          renderBrowserTaskTimeline(bouts);
+        }
+        stopBrowserTimelinePoll();
+        if (bouts.some(b => b.endMs === null)) {
+          browserTimelinePollInterval = setInterval(loadBrowserTimeline, 10000);
+        }
+      } catch (e) {
+        console.error('Failed to load timeline:', e);
+        browserTimelineContainer.innerHTML = '<div class="timeline-empty">Failed to load timeline</div>';
+      }
+    }
+
+    function renderBrowserTaskTimeline(bouts) {
+      if (!bouts.length) {
+        browserTimelineContainer.innerHTML = '<div class="timeline-empty"><p>No sessions recorded</p></div>';
+        return;
+      }
+
+      const dayGroups = new Map();
+      for (const bout of bouts) {
+        const dayKey = new Date(bout.startMs).toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' });
+        if (!dayGroups.has(dayKey)) dayGroups.set(dayKey, []);
+        dayGroups.get(dayKey).push(bout);
+      }
+
+      let totalMs = 0;
+      let html = '<div class="timeline-task-view">';
+
+      for (const [dayKey, dayBouts] of dayGroups) {
+        const dayLabel = formatDayLabel(dayBouts[0].startMs);
+        const starts = dayBouts.map(b => b.startMs);
+        const ends = dayBouts.map(b => b.endMs || Date.now());
+        const minMs = Math.min(...starts);
+        const maxMs = Math.max(...ends);
+
+        const minDate = new Date(minMs);
+        minDate.setMinutes(0, 0, 0);
+        const axisStart = minDate.getTime();
+
+        const maxDate = new Date(maxMs);
+        maxDate.setMinutes(0, 0, 0);
+        maxDate.setHours(maxDate.getHours() + 1);
+        const axisEnd = maxDate.getTime();
+        const axisSpan = axisEnd - axisStart;
+
+        let ticksHtml = '';
+        const tickDate = new Date(axisStart);
+        while (tickDate.getTime() <= axisEnd) {
+          const pct = ((tickDate.getTime() - axisStart) / axisSpan) * 100;
+          const label = formatTimeShort(tickDate.getTime());
+          ticksHtml += `<div class="timeline-hour-tick" style="left:${pct}%"><span>${label}</span></div>`;
+          tickDate.setHours(tickDate.getHours() + 1);
+        }
+
+        let blocksHtml = '';
+        let belowLabels = '';
+        for (const bout of dayBouts) {
+          const endMs = bout.endMs || Date.now();
+          const durationMs = endMs - bout.startMs;
+          totalMs += durationMs;
+
+          const leftPct = ((bout.startMs - axisStart) / axisSpan) * 100;
+          const widthPct = Math.max((durationMs / axisSpan) * 100, 2);
+          const activeClass = bout.endMs === null ? ' active' : '';
+          const timeRange = `${formatTimeShort(bout.startMs)}–${bout.endMs === null ? 'now' : formatTimeShort(bout.endMs)}`;
+          const label = `${timeRange} · ${formatDuration(durationMs)}`;
+
+          blocksHtml += `<div class="timeline-hblock${activeClass}" style="left:${leftPct}%;width:${widthPct}%" title="${label}"><span class="hblock-label">${label}</span></div>`;
+          belowLabels += `<div class="hblock-below-label" style="left:${leftPct}%;width:${widthPct}%"><span>${timeRange}</span><span class="hblock-below-dur">${formatDuration(durationMs)}</span></div>`;
+        }
+
+        html += `
+          <div class="timeline-day-group">
+            <div class="timeline-day-label">${dayLabel}</div>
+            <div class="timeline-day-track">
+              <div class="timeline-day-ticks">${ticksHtml}</div>
+              <div class="timeline-day-axis">${blocksHtml}</div>
+              <div class="timeline-day-labels">${belowLabels}</div>
+            </div>
+          </div>`;
+      }
+
+      html += `<div class="timeline-summary"><span>Total</span><span class="timeline-total-value">${formatDuration(totalMs)}</span></div>`;
+      html += '</div>';
+      browserTimelineContainer.innerHTML = html;
+    }
+
+    function renderBrowserDailyTimeline(bouts) {
+      if (!bouts.length) {
+        browserTimelineContainer.innerHTML = '<div class="timeline-empty"><p>No sessions recorded</p></div>';
+        return;
+      }
+
+      const HOUR_HEIGHT = 60;
+      const colors = ['#6366f1', '#8b5cf6', '#a78bfa', '#6d28d9', '#4f46e5'];
+
+      const starts = bouts.map(b => b.startMs);
+      const ends = bouts.map(b => b.endMs || Date.now());
+      const minMs = Math.min(...starts);
+      const maxMs = Math.max(...ends);
+
+      const startDate = new Date(minMs);
+      startDate.setMinutes(0, 0, 0);
+      const axisStartMs = startDate.getTime();
+      const startHour = startDate.getHours();
+
+      const endDate = new Date(maxMs);
+      endDate.setMinutes(0, 0, 0);
+      endDate.setHours(endDate.getHours() + 1);
+      const axisEndMs = endDate.getTime();
+
+      const totalHours = Math.ceil((axisEndMs - axisStartMs) / 3600000);
+      const axisHeight = totalHours * HOUR_HEIGHT;
+      const axisSpan = axisEndMs - axisStartMs;
+
+      let hoursHtml = '';
+      for (let i = 0; i <= totalHours; i++) {
+        const h = (startHour + i) % 24;
+        const ampm = h >= 12 ? 'PM' : 'AM';
+        const h12 = h % 12 || 12;
+        const top = i * HOUR_HEIGHT;
+        hoursHtml += `<div class="timeline-hour-line" style="top:${top}px"><span>${h12} ${ampm}</span></div>`;
+      }
+
+      const now = Date.now();
+      let nowHtml = '';
+      if (now >= axisStartMs && now <= axisEndMs) {
+        const nowTop = ((now - axisStartMs) / axisSpan) * axisHeight;
+        nowHtml = `<div class="timeline-now-marker" style="top:${nowTop}px"><span>now</span></div>`;
+      }
+
+      let totalMs = 0;
+      let blocksHtml = '';
+      for (const bout of bouts) {
+        const endMs = bout.endMs || Date.now();
+        const durationMs = endMs - bout.startMs;
+        totalMs += durationMs;
+
+        const top = ((bout.startMs - axisStartMs) / axisSpan) * axisHeight;
+        const rawHeight = (durationMs / axisSpan) * axisHeight;
+        const height = Math.max(rawHeight, 4);
+        const color = colors[bout.colorIndex % colors.length];
+        const activeClass = bout.endMs === null ? ' active' : '';
+        const label = `${bout.taskTitle} · ${formatDuration(durationMs)}`;
+        const timeLabel = `${formatTimeShort(bout.startMs)}–${bout.endMs === null ? 'now' : formatTimeShort(bout.endMs)}`;
+        const isShort = height < 28;
+
+        if (isShort) {
+          blocksHtml += `<div class="timeline-vblock short${activeClass}" style="top:${top}px;height:${height}px;background:${color}" title="${timeLabel} · ${formatDuration(durationMs)}"></div><div class="vblock-side-label" style="top:${top}px;color:${color}">${label} <span class="vblock-side-time">${timeLabel}</span></div>`;
+        } else {
+          blocksHtml += `<div class="timeline-vblock${activeClass}" style="top:${top}px;height:${height}px;background:${color}" title="${timeLabel} · ${formatDuration(durationMs)}"><span class="vblock-label">${label}</span><span class="vblock-time">${timeLabel}</span></div>`;
+        }
+      }
+
+      let html = `
+        <div class="timeline-daily-view">
+          <div class="timeline-vaxis" style="height:${axisHeight}px">
+            ${hoursHtml}
+            ${blocksHtml}
+            ${nowHtml}
+          </div>
+          <div class="timeline-summary"><span>Total</span><span class="timeline-total-value">${formatDuration(totalMs)}</span></div>
+        </div>`;
+
+      browserTimelineContainer.innerHTML = html;
+    }
 
     // ── Init ──
 

@@ -96,6 +96,16 @@ struct TimeLog {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+struct TimelineBout {
+    task_id: String,
+    task_title: String,
+    start_ms: u64,
+    end_ms: Option<u64>, // None = active
+    color_index: u8,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 struct Position {
     x: f64,
     y: f64,
@@ -884,6 +894,163 @@ fn open_pages_browser(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+// ── Timeline ──
+
+/// Compute bouts from time_logs: pair "start" with next "pause"/"complete".
+fn compute_bouts_from_logs(
+    todo: &Todo,
+    task_title: &str,
+    color_index: u8,
+) -> Vec<TimelineBout> {
+    let mut bouts = Vec::new();
+    let mut open_start: Option<u64> = None;
+
+    for log in todo.time_logs.iter() {
+        match log.event.as_str() {
+            "start" => {
+                // Close orphaned previous start at this start's timestamp
+                if let Some(s) = open_start {
+                    bouts.push(TimelineBout {
+                        task_id: todo.id.clone(),
+                        task_title: task_title.to_string(),
+                        start_ms: s,
+                        end_ms: Some(log.timestamp),
+                        color_index,
+                    });
+                }
+                open_start = Some(log.timestamp);
+            }
+            "pause" | "complete" => {
+                if let Some(s) = open_start {
+                    bouts.push(TimelineBout {
+                        task_id: todo.id.clone(),
+                        task_title: task_title.to_string(),
+                        start_ms: s,
+                        end_ms: Some(log.timestamp),
+                        color_index,
+                    });
+                    open_start = None;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // If there's an unclosed start and the timer is running, it's active
+    if let Some(s) = open_start {
+        bouts.push(TimelineBout {
+            task_id: todo.id.clone(),
+            task_title: task_title.to_string(),
+            start_ms: s,
+            end_ms: None, // active
+            color_index,
+        });
+    }
+
+    bouts
+}
+
+/// Split bouts at midnight boundaries so each bout fits within a single day.
+fn split_bouts_at_midnight(bouts: Vec<TimelineBout>) -> Vec<TimelineBout> {
+    use chrono::{TimeZone, Local, Datelike, Duration};
+    let mut result = Vec::new();
+
+    for bout in bouts {
+        let end_ms = bout.end_ms.unwrap_or_else(|| now_ms());
+        let start_dt = Local.timestamp_millis_opt(bout.start_ms as i64).unwrap();
+        let end_dt = Local.timestamp_millis_opt(end_ms as i64).unwrap();
+
+        if start_dt.date_naive() == end_dt.date_naive() {
+            // Same day, no split needed
+            result.push(bout);
+        } else {
+            // Split at each midnight
+            let mut seg_start = bout.start_ms;
+            let mut current_date = start_dt.date_naive();
+            let end_date = end_dt.date_naive();
+
+            while current_date < end_date {
+                let next_day = current_date + Duration::days(1);
+                let midnight = Local
+                    .with_ymd_and_hms(next_day.year(), next_day.month(), next_day.day(), 0, 0, 0)
+                    .unwrap()
+                    .timestamp_millis() as u64;
+
+                result.push(TimelineBout {
+                    task_id: bout.task_id.clone(),
+                    task_title: bout.task_title.clone(),
+                    start_ms: seg_start,
+                    end_ms: Some(midnight),
+                    color_index: bout.color_index,
+                });
+
+                seg_start = midnight;
+                current_date = next_day;
+            }
+
+            // Final segment (same day as end)
+            result.push(TimelineBout {
+                task_id: bout.task_id.clone(),
+                task_title: bout.task_title.clone(),
+                start_ms: seg_start,
+                end_ms: bout.end_ms, // preserve None for active
+                color_index: bout.color_index,
+            });
+        }
+    }
+
+    result
+}
+
+#[tauri::command]
+fn load_timeline(store: tauri::State<DataStore>, task_id: String) -> Vec<TimelineBout> {
+    let data = store.data.lock().unwrap();
+    let all_todos: Vec<&Todo> = data.todos.iter().chain(data.archived_todos.iter()).collect();
+
+    if task_id.starts_with("daily_") {
+        // Daily page: aggregate bouts from all tasks on that date
+        let date_str = &task_id[6..]; // "YYYY-MM-DD"
+        let mut bouts = Vec::new();
+        let mut color_idx: u8 = 0;
+
+        for todo in &all_todos {
+            if todo.time_logs.is_empty() {
+                continue;
+            }
+            let raw = compute_bouts_from_logs(todo, &todo.title, color_idx);
+            let split = split_bouts_at_midnight(raw);
+
+            // Filter to bouts on this date
+            let day_bouts: Vec<TimelineBout> = split
+                .into_iter()
+                .filter(|b| {
+                    use chrono::{TimeZone, Local};
+                    let dt = Local.timestamp_millis_opt(b.start_ms as i64).unwrap();
+                    dt.format("%Y-%m-%d").to_string() == *date_str
+                })
+                .collect();
+
+            if !day_bouts.is_empty() {
+                bouts.extend(day_bouts);
+                color_idx = (color_idx + 1).min(4);
+            }
+        }
+
+        bouts.sort_by_key(|b| b.start_ms);
+        bouts
+    } else {
+        // Task page: find the specific todo
+        if let Some(todo) = all_todos.iter().find(|t| t.id == task_id) {
+            let raw = compute_bouts_from_logs(todo, &todo.title, 0);
+            let mut bouts = split_bouts_at_midnight(raw);
+            bouts.sort_by_key(|b| b.start_ms);
+            bouts
+        } else {
+            Vec::new()
+        }
+    }
+}
+
 // ── App entry point ──
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -950,6 +1117,7 @@ pub fn run() {
             check_page_window_open,
             focus_page_window,
             open_pages_browser,
+            load_timeline,
         ])
         .on_window_event(|window, event| {
             match event {

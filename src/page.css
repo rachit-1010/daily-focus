@@ -22,6 +22,7 @@ body {
   padding: 0 16px 10px;
   padding-top: 12px;
   flex-shrink: 0;
+  gap: 8px;
 }
 
 .page-toolbar-left {
@@ -110,4 +111,313 @@ body {
 
 .page-editor::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+
+/* ── View Toggle ── */
+.page-view-toggle {
+  display: flex;
+  gap: 2px;
+  background: #f1f5f9;
+  border-radius: 6px;
+  padding: 2px;
+  flex-shrink: 0;
+}
+
+.view-btn {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+
+.view-btn:hover {
+  color: #475569;
+}
+
+.view-btn.active {
+  background: #fff;
+  color: #6366f1;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+/* ── Timeline Container ── */
+.timeline-container {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 0;
+}
+
+.timeline-container::-webkit-scrollbar {
+  width: 5px;
+}
+
+.timeline-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.timeline-container::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.timeline-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #94a3b8;
+  font-size: 13px;
+  font-style: italic;
+}
+
+/* ── Timeline Summary ── */
+.timeline-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  margin-top: 12px;
+  border-top: 1px solid #e2e8f0;
+  font-size: 12px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.timeline-total-value {
+  color: #6366f1;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Task Timeline: Day-grouped horizontal ── */
+.timeline-task-view {
+  padding: 0 4px;
+}
+
+.timeline-day-group {
+  margin-bottom: 16px;
+}
+
+.timeline-day-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: #94a3b8;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  margin-bottom: 4px;
+}
+
+.timeline-day-track {
+  position: relative;
+}
+
+.timeline-day-ticks {
+  position: relative;
+  height: 16px;
+}
+
+.timeline-hour-tick {
+  position: absolute;
+  top: 0;
+}
+
+.timeline-hour-tick span {
+  font-size: 9px;
+  color: #cbd5e1;
+  transform: translateX(-50%);
+  display: inline-block;
+  font-variant-numeric: tabular-nums;
+}
+
+.timeline-day-axis {
+  position: relative;
+  height: 28px;
+  background: #f1f5f9;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.timeline-hblock {
+  position: absolute;
+  height: 100%;
+  top: 0;
+  border-radius: 4px;
+  background: #6366f1;
+  min-width: 6px;
+  cursor: default;
+  overflow: hidden;
+  transition: opacity 0.15s;
+}
+
+.timeline-hblock:hover {
+  opacity: 0.85;
+}
+
+.hblock-label {
+  color: #fff;
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 6px;
+  line-height: 28px;
+  display: block;
+}
+
+.timeline-hblock.active {
+  animation: pulse-block 2s ease-in-out infinite;
+  background: linear-gradient(90deg, #6366f1, #818cf8);
+}
+
+/* Below-block labels for task timeline */
+.timeline-day-labels {
+  position: relative;
+  height: 28px;
+}
+
+.hblock-below-label {
+  position: absolute;
+  top: 2px;
+  display: flex;
+  flex-direction: column;
+  font-size: 9px;
+  color: #64748b;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+}
+
+.hblock-below-dur {
+  color: #6366f1;
+  font-weight: 600;
+}
+
+/* ── Daily Timeline: Vertical hour axis ── */
+.timeline-daily-view {
+  padding: 0 4px;
+}
+
+.timeline-vaxis {
+  position: relative;
+  padding-left: 52px;
+  min-height: 120px;
+}
+
+.timeline-hour-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: #e2e8f0;
+}
+
+.timeline-hour-line span {
+  position: absolute;
+  left: 0;
+  top: -7px;
+  font-size: 10px;
+  color: #94a3b8;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  width: 44px;
+  text-align: right;
+}
+
+.timeline-vblock {
+  position: absolute;
+  left: 56px;
+  right: 8px;
+  border-radius: 6px;
+  min-height: 4px;
+  overflow: hidden;
+  cursor: default;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 4px 8px;
+  transition: opacity 0.15s;
+}
+
+.timeline-vblock.short {
+  right: 55%;
+  padding: 0;
+}
+
+.timeline-vblock:hover {
+  opacity: 0.85;
+}
+
+.vblock-side-label {
+  position: absolute;
+  left: 48%;
+  right: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1;
+  transform: translateY(-3px);
+}
+
+.vblock-side-time {
+  color: #94a3b8;
+  font-weight: 400;
+  font-size: 10px;
+}
+
+.vblock-label {
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vblock-time {
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.timeline-vblock.active {
+  animation: pulse-block 2s ease-in-out infinite;
+}
+
+.timeline-now-marker {
+  position: absolute;
+  left: 48px;
+  right: 0;
+  border-top: 2px dashed #ef4444;
+  z-index: 10;
+}
+
+.timeline-now-marker span {
+  position: absolute;
+  left: -44px;
+  top: -7px;
+  font-size: 9px;
+  color: #ef4444;
+  font-weight: 600;
+  text-transform: uppercase;
+  width: 40px;
+  text-align: right;
+}
+
+/* ── Animations ── */
+@keyframes pulse-block {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
