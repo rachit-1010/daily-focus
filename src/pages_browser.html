@@ -61,11 +61,13 @@
         <span class="editor-title-display" id="editor-title-display"></span>
         <input type="text" class="editor-title-input" id="editor-title-input" style="display:none" placeholder="Untitled">
       </div>
+      <span class="editor-type-badge" id="editor-type-badge"></span>
+    </div>
+    <div class="editor-toggle-row">
       <div class="page-view-toggle" id="browser-view-toggle">
         <button class="view-btn active" data-view="notes">Notes</button>
         <button class="view-btn" data-view="timeline">Timeline</button>
       </div>
-      <span class="editor-type-badge" id="editor-type-badge"></span>
     </div>
     <div class="editor-wrap">
       <textarea class="editor-textarea" id="editor-textarea" placeholder="Write your notes here..." spellcheck="true"></textarea>
@@ -79,6 +81,7 @@
     'use strict';
 
     const { invoke } = window.__TAURI__.core;
+    const { listen } = window.__TAURI__.event;
 
     // ── State ──
 
@@ -379,17 +382,6 @@
     // ── Open page ──
 
     async function openPage(pageMeta) {
-      // Check if a standalone page window is already open for this page
-      try {
-        const isOpen = await invoke('check_page_window_open', { pageId: pageMeta.id });
-        if (isOpen) {
-          await invoke('focus_page_window', { pageId: pageMeta.id });
-          return;
-        }
-      } catch (e) {
-        // Ignore — proceed to open inline
-      }
-
       currentPageId = pageMeta.id;
       currentPageMeta = pageMeta;
 
@@ -607,6 +599,8 @@
       let totalMs = 0;
       let html = '<div class="timeline-task-view">';
 
+      const PX_PER_HOUR = 80;
+
       for (const [dayKey, dayBouts] of dayGroups) {
         const dayLabel = formatDayLabel(dayBouts[0].startMs);
         const starts = dayBouts.map(b => b.startMs);
@@ -623,40 +617,48 @@
         maxDate.setHours(maxDate.getHours() + 1);
         const axisEnd = maxDate.getTime();
         const axisSpan = axisEnd - axisStart;
+        const totalHours = axisSpan / 3600000;
+        const axisWidthRaw = totalHours * PX_PER_HOUR;
 
+        // Hour tick labels + gridlines
         let ticksHtml = '';
+        let gridHtml = '';
         const tickDate = new Date(axisStart);
         while (tickDate.getTime() <= axisEnd) {
-          const pct = ((tickDate.getTime() - axisStart) / axisSpan) * 100;
+          const leftPx = ((tickDate.getTime() - axisStart) / axisSpan) * axisWidthRaw;
           const label = formatTimeShort(tickDate.getTime());
-          ticksHtml += `<div class="timeline-hour-tick" style="left:${pct}%"><span>${label}</span></div>`;
+          ticksHtml += `<div class="timeline-hour-tick" style="left:${leftPx}px"><span>${label}</span></div>`;
+          gridHtml += `<div class="timeline-gridline" style="left:${leftPx}px"></div>`;
+          // 30-min minor tick
+          const halfMs = tickDate.getTime() + 1800000;
+          if (halfMs < axisEnd) {
+            const halfPx = ((halfMs - axisStart) / axisSpan) * axisWidthRaw;
+            gridHtml += `<div class="timeline-gridline minor" style="left:${halfPx}px"></div>`;
+          }
           tickDate.setHours(tickDate.getHours() + 1);
         }
 
         let blocksHtml = '';
-        let belowLabels = '';
         for (const bout of dayBouts) {
           const endMs = bout.endMs || Date.now();
           const durationMs = endMs - bout.startMs;
           totalMs += durationMs;
 
-          const leftPct = ((bout.startMs - axisStart) / axisSpan) * 100;
-          const widthPct = Math.max((durationMs / axisSpan) * 100, 2);
+          const leftPx = ((bout.startMs - axisStart) / axisSpan) * axisWidthRaw;
+          const widthPx = Math.max((durationMs / axisSpan) * axisWidthRaw, 6);
           const activeClass = bout.endMs === null ? ' active' : '';
           const timeRange = `${formatTimeShort(bout.startMs)}–${bout.endMs === null ? 'now' : formatTimeShort(bout.endMs)}`;
-          const label = `${timeRange} · ${formatDuration(durationMs)}`;
+          const tooltip = `${timeRange} · ${formatDuration(durationMs)}`;
 
-          blocksHtml += `<div class="timeline-hblock${activeClass}" style="left:${leftPct}%;width:${widthPct}%" title="${label}"><span class="hblock-label">${label}</span></div>`;
-          belowLabels += `<div class="hblock-below-label" style="left:${leftPct}%;width:${widthPct}%"><span>${timeRange}</span><span class="hblock-below-dur">${formatDuration(durationMs)}</span></div>`;
+          blocksHtml += `<div class="timeline-hblock${activeClass}" style="left:${leftPx}px;width:${widthPx}px"><span class="hblock-tooltip"><span class="hblock-tooltip-time">${timeRange}</span><span class="hblock-tooltip-dur">${formatDuration(durationMs)}</span></span></div>`;
         }
 
         html += `
           <div class="timeline-day-group">
             <div class="timeline-day-label">${dayLabel}</div>
             <div class="timeline-day-track">
-              <div class="timeline-day-ticks">${ticksHtml}</div>
-              <div class="timeline-day-axis">${blocksHtml}</div>
-              <div class="timeline-day-labels">${belowLabels}</div>
+              <div class="timeline-day-ticks" style="min-width:100%;width:${axisWidthRaw}px">${ticksHtml}</div>
+              <div class="timeline-day-axis" style="min-width:100%;width:${axisWidthRaw}px">${gridHtml}${blocksHtml}</div>
             </div>
           </div>`;
       }
@@ -664,6 +666,32 @@
       html += `<div class="timeline-summary"><span>Total</span><span class="timeline-total-value">${formatDuration(totalMs)}</span></div>`;
       html += '</div>';
       browserTimelineContainer.innerHTML = html;
+
+      // Position tooltips left/right based on available space
+      browserTimelineContainer.querySelectorAll('.timeline-hblock').forEach(block => {
+        const tooltip = block.querySelector('.hblock-tooltip');
+        if (!tooltip) return;
+
+        block.addEventListener('mouseenter', () => {
+          const blockRect = block.getBoundingClientRect();
+          const tooltipWidth = tooltip.offsetWidth || 120;
+          const spaceRight = window.innerWidth - blockRect.right;
+          const spaceLeft = blockRect.left;
+
+          tooltip.classList.remove('tooltip-left', 'tooltip-right');
+
+          if (spaceRight >= tooltipWidth + 12) {
+            // Show on the right
+            tooltip.classList.add('tooltip-right');
+            tooltip.style.left = (blockRect.right + 8) + 'px';
+          } else {
+            // Show on the left
+            tooltip.classList.add('tooltip-left');
+            tooltip.style.left = (blockRect.left - tooltipWidth - 8) + 'px';
+          }
+          tooltip.style.top = (blockRect.top + blockRect.height / 2 - tooltip.offsetHeight / 2) + 'px';
+        });
+      });
     }
 
     function renderBrowserDailyTimeline(bouts) {
@@ -746,9 +774,55 @@
       browserTimelineContainer.innerHTML = html;
     }
 
+    // ── Navigate-to-page event (from open_page_window command) ──
+
+    async function resolvePageMeta(taskId) {
+      if (taskId.startsWith('daily_')) {
+        const dateStr = taskId.substring(6);
+        const d = new Date(dateStr + 'T00:00:00');
+        const title = d.toLocaleDateString('en-US', {
+          weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'
+        });
+        return { id: taskId, title, pageType: 'daily' };
+      }
+      // Look up in loaded pages first
+      const found = allPages.find(p => p.id === taskId);
+      if (found) return found;
+      // Fallback: load data to find task title
+      try {
+        const data = await invoke('load_data');
+        const allTasks = [...(data.todos || []), ...(data.archivedTodos || [])];
+        const task = allTasks.find(t => t.id === taskId);
+        if (task) return { id: taskId, title: task.title, pageType: 'task' };
+      } catch (e) {
+        console.error('Failed to resolve page meta:', e);
+      }
+      return { id: taskId, title: 'Notes', pageType: 'task' };
+    }
+
+    listen('navigate-to-page', async (event) => {
+      const taskId = event.payload;
+      const pageMeta = await resolvePageMeta(taskId);
+      openPage(pageMeta);
+    });
+
     // ── Init ──
 
-    loadPages();
+    const urlParams = new URLSearchParams(window.location.search);
+    const initialPageId = urlParams.get('page');
+
+    if (initialPageId) {
+      // Hide list view immediately to avoid flash
+      listView.classList.add('hidden');
+      editorView.classList.remove('hidden');
+      // Load pages in background, then navigate to the target page
+      loadPages().then(async () => {
+        const pageMeta = await resolvePageMeta(initialPageId);
+        openPage(pageMeta);
+      });
+    } else {
+      loadPages();
+    }
   })();
   </script>
 </body>

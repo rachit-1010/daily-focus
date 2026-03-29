@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 // ── macOS: overlay window over fullscreen apps ──
 
@@ -494,43 +494,32 @@ fn resize_compact(store: tauri::State<DataStore>, app: AppHandle) {
 #[tauri::command]
 fn open_page_window(
     app: AppHandle,
-    store: tauri::State<DataStore>,
     task_id: String,
 ) -> Result<(), String> {
-    let label = format!("page_{}", task_id);
+    let label = "pages_browser";
 
-    // If window already exists, just focus it
-    if let Some(win) = app.get_webview_window(&label) {
+    // If pages browser already exists, focus it and navigate to the page
+    if let Some(win) = app.get_webview_window(label) {
         let _ = win.show();
         let _ = win.set_focus();
+        let _ = app.emit_to(label, "navigate-to-page", &task_id);
         return Ok(());
     }
 
-    // Get task title for window header
-    let data = store.data.lock().unwrap();
-    let _title = data
-        .todos
-        .iter()
-        .chain(data.archived_todos.iter())
-        .find(|t| t.id == task_id)
-        .map(|t| t.title.clone())
-        .unwrap_or_else(|| "Notes".to_string());
-    drop(data);
+    // Create the pages browser window with page param so it opens directly
+    let url = tauri::WebviewUrl::App(format!("pages_browser.html?page={}", task_id).into());
 
-    let url = tauri::WebviewUrl::App("page.html".into());
+    let mut builder = tauri::WebviewWindowBuilder::new(&app, label, url)
+        .title("All Pages")
+        .inner_size(400.0, 560.0)
+        .min_inner_size(320.0, 400.0);
 
-    let mut builder = tauri::WebviewWindowBuilder::new(&app, &label, url)
-        .title(&_title)
-        .inner_size(480.0, 560.0)
-        .min_inner_size(320.0, 300.0);
-
-    // Position page window 36px right+down from main window, or 36px left+down if no space
+    // Position relative to main window
     if let Some(main_win) = app.get_webview_window("main") {
         if let (Ok(pos), Ok(size), Ok(Some(monitor))) =
             (main_win.outer_position(), main_win.outer_size(), main_win.current_monitor())
         {
             let scale = monitor.scale_factor();
-            // Convert physical pixels to logical pixels
             let main_x = pos.x as f64 / scale;
             let main_y = pos.y as f64 / scale;
             let main_w = size.width as f64 / scale;
@@ -539,14 +528,12 @@ fn open_page_window(
             let mon_right = mon_pos.x as f64 / scale + mon_size.width as f64 / scale;
 
             let gap = 36.0;
-            let page_w = 480.0;
-            let page_y = main_y + gap;
+            let page_w = 400.0;
+            let page_y = main_y;
 
             let page_x = if main_x + main_w + gap + page_w <= mon_right {
-                // Fits on the right
                 main_x + main_w + gap
             } else {
-                // Place on the left
                 main_x - page_w - gap
             };
 
@@ -556,17 +543,13 @@ fn open_page_window(
         builder = builder.center();
     }
 
-    builder
-        .build()
-        .map_err(|e| e.to_string())?;
-
+    builder.build().map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
-fn close_page_window(app: AppHandle, task_id: String) {
-    let label = format!("page_{}", task_id);
-    if let Some(win) = app.get_webview_window(&label) {
+fn close_page_window(app: AppHandle, _task_id: String) {
+    if let Some(win) = app.get_webview_window("pages_browser") {
         let _ = win.close();
     }
 }
@@ -828,20 +811,6 @@ fn search_pages(
     results
 }
 
-#[tauri::command]
-fn check_page_window_open(app: AppHandle, page_id: String) -> bool {
-    let label = format!("page_{}", page_id);
-    app.get_webview_window(&label).is_some()
-}
-
-#[tauri::command]
-fn focus_page_window(app: AppHandle, page_id: String) {
-    let label = format!("page_{}", page_id);
-    if let Some(win) = app.get_webview_window(&label) {
-        let _ = win.show();
-        let _ = win.set_focus();
-    }
-}
 
 #[tauri::command]
 fn open_pages_browser(app: AppHandle) -> Result<(), String> {
@@ -858,8 +827,8 @@ fn open_pages_browser(app: AppHandle) -> Result<(), String> {
 
     let mut builder = tauri::WebviewWindowBuilder::new(&app, label, url)
         .title("All Pages")
-        .inner_size(560.0, 640.0)
-        .min_inner_size(400.0, 400.0);
+        .inner_size(400.0, 560.0)
+        .min_inner_size(320.0, 400.0);
 
     // Position relative to main window
     if let Some(main_win) = app.get_webview_window("main") {
@@ -875,7 +844,7 @@ fn open_pages_browser(app: AppHandle) -> Result<(), String> {
             let mon_right = mon_pos.x as f64 / scale + mon_size.width as f64 / scale;
 
             let gap = 36.0;
-            let page_w = 560.0;
+            let page_w = 400.0;
             let page_y = main_y;
 
             let page_x = if main_x + main_w + gap + page_w <= mon_right {
@@ -1114,8 +1083,6 @@ pub fn run() {
             create_note_page,
             rename_page,
             search_pages,
-            check_page_window_open,
-            focus_page_window,
             open_pages_browser,
             load_timeline,
         ])
