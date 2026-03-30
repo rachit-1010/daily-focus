@@ -131,9 +131,6 @@
   const emptyState = document.getElementById('empty-state');
   const footer = document.getElementById('footer');
   const headerDate = document.getElementById('header-date');
-  const dayResetBanner = document.getElementById('day-reset-banner');
-  const resetClearBtn = document.getElementById('reset-clear');
-  const resetKeepBtn = document.getElementById('reset-keep');
   const headerTotalTime = document.getElementById('header-total-time');
   const headerDragHandle = document.getElementById('header-drag-handle');
 
@@ -161,7 +158,16 @@
     isCompactMode = data.compactMode || false;
 
     if (data.todosDate && data.todosDate !== todayStr() && todos.length > 0) {
-      dayResetBanner.classList.remove('hidden');
+      // Auto-archive completed tasks and keep pending ones
+      for (const todo of todos) {
+        if (todo.completed) {
+          await invoke('close_page_window', { taskId: todo.id });
+        }
+      }
+      await invoke('archive_todos', { mode: 'keep' });
+      const refreshed = await invoke('load_data');
+      todos = refreshed.todos;
+      currentTaskId = refreshed.currentTaskId;
     }
 
     applyMode(isCompactMode);
@@ -267,36 +273,6 @@
     headerTotalTime.textContent = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
   }
 
-  // ══════════════════════════════════════════
-  //  DAY RESET
-  // ══════════════════════════════════════════
-
-  resetClearBtn.addEventListener('click', async () => {
-    // Close page windows for all tasks before archiving
-    for (const todo of todos) {
-      await invoke('close_page_window', { taskId: todo.id });
-    }
-    await invoke('archive_todos', { mode: 'clear' });
-    todos = [];
-    currentTaskId = null;
-    dayResetBanner.classList.add('hidden');
-    render();
-  });
-
-  resetKeepBtn.addEventListener('click', async () => {
-    // Close page windows for completed tasks before archiving
-    for (const todo of todos) {
-      if (todo.completed) {
-        await invoke('close_page_window', { taskId: todo.id });
-      }
-    }
-    await invoke('archive_todos', { mode: 'keep' });
-    const data = await invoke('load_data');
-    todos = data.todos;
-    currentTaskId = data.currentTaskId;
-    dayResetBanner.classList.add('hidden');
-    render();
-  });
 
   // ══════════════════════════════════════════
   //  ADD TODO
