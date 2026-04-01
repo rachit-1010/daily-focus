@@ -381,7 +381,7 @@
 
     // ── Open page ──
 
-    async function openPage(pageMeta) {
+    async function openPage(pageMeta, openPageOptions) {
       currentPageId = pageMeta.id;
       currentPageMeta = pageMeta;
 
@@ -411,18 +411,25 @@
       editorTypeBadge.textContent = getBadgeLabel(pageMeta.pageType);
       editorTypeBadge.className = `editor-type-badge page-type-badge type-${pageMeta.pageType}`;
 
-      // Reset to notes view
-      browserCurrentView = 'notes';
+      // Set initial view (notes or timeline)
+      const initialView = openPageOptions?.view || 'notes';
+      browserCurrentView = initialView;
       browserViewToggle.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
-      browserViewToggle.querySelector('[data-view="notes"]').classList.add('active');
-      editorTextarea.style.display = '';
-      browserTimelineContainer.style.display = 'none';
-      stopBrowserTimelinePoll();
+      browserViewToggle.querySelector(`[data-view="${initialView}"]`).classList.add('active');
+      if (initialView === 'timeline') {
+        editorTextarea.style.display = 'none';
+        browserTimelineContainer.style.display = '';
+        loadBrowserTimeline();
+      } else {
+        editorTextarea.style.display = '';
+        browserTimelineContainer.style.display = 'none';
+        stopBrowserTimelinePoll();
+      }
 
       // Switch views
       listView.classList.add('hidden');
       editorView.classList.remove('hidden');
-      editorTextarea.focus();
+      if (initialView !== 'timeline') editorTextarea.focus();
       editorStatus.textContent = '';
     }
 
@@ -801,15 +808,18 @@
     }
 
     listen('navigate-to-page', async (event) => {
-      const taskId = event.payload;
+      const payload = event.payload;
+      const taskId = typeof payload === 'string' ? payload : payload.taskId;
+      const view = typeof payload === 'string' ? null : payload.view;
       const pageMeta = await resolvePageMeta(taskId);
-      openPage(pageMeta);
+      openPage(pageMeta, view ? { view } : null);
     });
 
     // ── Init ──
 
     const urlParams = new URLSearchParams(window.location.search);
     const initialPageId = urlParams.get('page');
+    const initialView = urlParams.get('view');
 
     if (initialPageId) {
       // Hide list view immediately to avoid flash
@@ -818,7 +828,7 @@
       // Load pages in background, then navigate to the target page
       loadPages().then(async () => {
         const pageMeta = await resolvePageMeta(initialPageId);
-        openPage(pageMeta);
+        openPage(pageMeta, initialView ? { view: initialView } : null);
       });
     } else {
       loadPages();

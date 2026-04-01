@@ -214,6 +214,11 @@
     invoke('open_page_window', { taskId: `daily_${todayStr()}` });
   });
 
+  headerTotalTime.style.cursor = 'pointer';
+  headerTotalTime.addEventListener('click', () => {
+    invoke('open_page_window', { taskId: `daily_${todayStr()}`, view: 'timeline' });
+  });
+
   const allPagesBtn = document.getElementById('all-pages-btn');
   allPagesBtn.addEventListener('click', () => {
     invoke('open_pages_browser');
@@ -1338,6 +1343,7 @@
         todayBtn.addEventListener('click', async () => {
           const newVal = !isTodayTask;
           todo.isToday = newVal;
+          expandedIds.delete(todo.id);
           await invoke('set_today', { taskId: todo.id, isToday: newVal });
           render();
         });

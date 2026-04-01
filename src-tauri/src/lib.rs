@@ -533,6 +533,7 @@ fn resize_compact(store: tauri::State<DataStore>, app: AppHandle) {
 fn open_page_window(
     app: AppHandle,
     task_id: String,
+    view: Option<String>,
 ) -> Result<(), String> {
     let label = "pages_browser";
 
@@ -540,12 +541,15 @@ fn open_page_window(
     if let Some(win) = app.get_webview_window(label) {
         let _ = win.show();
         let _ = win.set_focus();
-        let _ = app.emit_to(label, "navigate-to-page", &task_id);
+        // Send both task_id and view as a JSON payload
+        let payload = serde_json::json!({ "taskId": task_id, "view": view });
+        let _ = app.emit_to(label, "navigate-to-page", &payload);
         return Ok(());
     }
 
     // Create the pages browser window with page param so it opens directly
-    let url = tauri::WebviewUrl::App(format!("pages_browser.html?page={}", task_id).into());
+    let view_param = view.as_deref().map(|v| format!("&view={}", v)).unwrap_or_default();
+    let url = tauri::WebviewUrl::App(format!("pages_browser.html?page={}{}", task_id, view_param).into());
 
     let mut builder = tauri::WebviewWindowBuilder::new(&app, label, url)
         .title("All Pages")
