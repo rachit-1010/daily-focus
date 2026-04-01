@@ -12,43 +12,103 @@
   <div class="full-mode-container">
     <div class="container">
       <header class="header" id="header-drag-handle">
-        <div class="header-left">
-          <svg class="header-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
-            <circle cx="10" cy="10" r="8" stroke="#6366f1" stroke-width="1.5" fill="none"/>
-            <path d="M6 10l3 3 5-6" stroke="#6366f1" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-          <h1>Daily Focus</h1>
+        <div class="header-top">
+          <div class="header-left">
+            <svg class="header-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <circle cx="10" cy="10" r="8" stroke="#6366f1" stroke-width="1.5" fill="none"/>
+              <path d="M6 10l3 3 5-6" stroke="#6366f1" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <h1>Daily Focus</h1>
+            <span class="header-date" id="header-date"></span>
+          </div>
+          <div class="header-right">
+            <span class="header-total-time" id="header-total-time" title="Total time today">00:00</span>
+            <button id="daily-notes-btn" class="mode-toggle-btn" title="Today's notes">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M4.5 1.5h5l3.5 3.5v8.5a1.5 1.5 0 01-1.5 1.5h-7A1.5 1.5 0 013 13.5V3a1.5 1.5 0 011.5-1.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none"/>
+                <path d="M9.5 1.5V5.5h4" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+                <path d="M6 8.5h4M6 10.5h3" stroke="currentColor" stroke-width="1" stroke-linecap="round"/>
+              </svg>
+            </button>
+            <button id="all-pages-btn" class="mode-toggle-btn" title="All pages">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <rect x="3" y="3.5" width="9" height="11" rx="1.2" stroke="currentColor" stroke-width="1.3" fill="none"/>
+                <path d="M5 1.5h7.5a1.2 1.2 0 011.2 1.2V11" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M5.5 7h4M5.5 9h3" stroke="currentColor" stroke-width="1" stroke-linecap="round"/>
+              </svg>
+            </button>
+          </div>
         </div>
-        <div class="header-right">
-          <span class="header-date" id="header-date"></span>
-          <button id="daily-notes-btn" class="mode-toggle-btn" title="Today's notes">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M4.5 1.5h5l3.5 3.5v8.5a1.5 1.5 0 01-1.5 1.5h-7A1.5 1.5 0 013 13.5V3a1.5 1.5 0 011.5-1.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none"/>
-              <path d="M9.5 1.5V5.5h4" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
-              <path d="M6 8.5h4M6 10.5h3" stroke="currentColor" stroke-width="1" stroke-linecap="round"/>
+        <div class="header-tabs">
+          <div class="view-switcher" id="view-switcher">
+            <button class="view-tab active" data-view="today">Today</button>
+            <button class="view-tab" data-view="all">All Tasks</button>
+          </div>
+          <button id="add-btn" title="Add task">
+            <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
+              <path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
             </svg>
+            Add task
           </button>
-          <button id="all-pages-btn" class="mode-toggle-btn" title="All pages">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <rect x="3" y="3.5" width="9" height="11" rx="1.2" stroke="currentColor" stroke-width="1.3" fill="none"/>
-              <path d="M5 1.5h7.5a1.2 1.2 0 011.2 1.2V11" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-              <path d="M5.5 7h4M5.5 9h3" stroke="currentColor" stroke-width="1" stroke-linecap="round"/>
-            </svg>
-          </button>
-          <span class="header-total-time" id="header-total-time" title="Total time today">00:00</span>
         </div>
       </header>
 
-      <div class="add-todo">
-        <input type="text" id="todo-input" placeholder="What are you working on today?" autocomplete="off">
-        <div class="estimate-field">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.2" fill="none"/>
-            <path d="M6 3v3.5l2 1.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-          <input type="text" id="estimate-input" placeholder="0:00" title="Time estimate (h:mm)" autocomplete="off">
+      <!-- Add Task Modal -->
+      <div id="add-task-modal" class="modal-overlay hidden">
+        <div class="modal">
+          <div class="modal-header">
+            <h2>New Task</h2>
+            <button class="modal-close" id="modal-close">&times;</button>
+          </div>
+          <div class="modal-body">
+            <div class="modal-field">
+              <label>Task name</label>
+              <input type="text" id="modal-title" placeholder="What are you working on?" autocomplete="off">
+            </div>
+            <div class="modal-row">
+              <div class="modal-field half-auto">
+                <label>Estimate</label>
+                <div class="estimate-field sm">
+                  <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                    <circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.2" fill="none"/>
+                    <path d="M6 3v3.5l2 1.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  <input type="text" id="modal-estimate" placeholder="0:00" title="Time estimate (h:mm)" autocomplete="off">
+                </div>
+              </div>
+              <div class="modal-field half">
+                <label>Project</label>
+                <div class="project-input-wrapper">
+                  <input type="text" id="modal-project" class="project-input" placeholder="No project" autocomplete="off">
+                </div>
+              </div>
+            </div>
+            <div class="modal-field">
+              <button type="button" id="modal-today" class="today-toggle-btn is-today">
+                <span class="today-dot"></span> Planned for today
+              </button>
+            </div>
+            <div class="modal-field">
+              <label>Subtasks</label>
+              <div id="modal-subtasks" class="modal-subtasks"></div>
+              <div class="modal-add-subtask">
+                <input type="text" id="modal-subtask-input" placeholder="Add a subtask..." autocomplete="off">
+                <div class="estimate-field sm">
+                  <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                    <circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.2" fill="none"/>
+                    <path d="M6 3v3.5l2 1.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  <input type="text" id="modal-subtask-estimate" placeholder="0:00" autocomplete="off">
+                </div>
+                <button id="modal-subtask-add">+</button>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="modal-btn cancel" id="modal-cancel">Cancel</button>
+            <button class="modal-btn save" id="modal-save">Add Task</button>
+          </div>
         </div>
-        <button id="add-btn" title="Add task">+</button>
       </div>
 
       <div id="todo-list" class="todo-list"></div>

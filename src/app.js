@@ -18,7 +18,7 @@
 
   function formatDate() {
     return new Date().toLocaleDateString('en-US', {
-      weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'
+      weekday: 'short', month: 'short', day: 'numeric'
     });
   }
 
@@ -121,11 +121,17 @@
   let isCompactMode = false;
   let timerInterval = null;
   let dragState = null; // pointer-based drag state
+  let activeView = 'today'; // 'today' or 'all'
+  let collapsedProjects = new Set();
+  let knownProjects = [];
+  let currentProjectOrder = []; // tracks project display order for drag
+
+  function syncProjects() {
+    knownProjects = [...new Set(todos.map(t => t.project).filter(Boolean))];
+  }
 
   // ── DOM refs (full mode) ──
 
-  const todoInput = document.getElementById('todo-input');
-  const estimateInput = document.getElementById('estimate-input');
   const addBtn = document.getElementById('add-btn');
   const todoList = document.getElementById('todo-list');
   const emptyState = document.getElementById('empty-state');
@@ -149,6 +155,17 @@
 
   headerDate.textContent = formatDate();
 
+  // ── View Switcher ──
+
+  const viewSwitcher = document.getElementById('view-switcher');
+  viewSwitcher.addEventListener('click', (e) => {
+    const tab = e.target.closest('.view-tab');
+    if (!tab || tab.dataset.view === activeView) return;
+    activeView = tab.dataset.view;
+    viewSwitcher.querySelectorAll('.view-tab').forEach(t => t.classList.toggle('active', t === tab));
+    render();
+  });
+
   // ── Init ──
 
   async function init() {
@@ -156,6 +173,7 @@
     todos = data.todos || [];
     currentTaskId = data.currentTaskId || null;
     isCompactMode = data.compactMode || false;
+    knownProjects = data.projects || [];
 
     if (data.todosDate && data.todosDate !== todayStr() && todos.length > 0) {
       // Auto-archive completed tasks and keep pending ones
@@ -168,6 +186,7 @@
       const refreshed = await invoke('load_data');
       todos = refreshed.todos;
       currentTaskId = refreshed.currentTaskId;
+      knownProjects = refreshed.projects || [];
     }
 
     applyMode(isCompactMode);
@@ -275,42 +294,178 @@
 
 
   // ══════════════════════════════════════════
-  //  ADD TODO
+  //  ADD TODO (Modal)
   // ══════════════════════════════════════════
 
-  addBtn.addEventListener('click', addTodo);
-  todoInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') addTodo();
+  const modal = document.getElementById('add-task-modal');
+  const modalTitle = document.getElementById('modal-title');
+  const modalEstimate = document.getElementById('modal-estimate');
+  const modalProject = document.getElementById('modal-project');
+  const modalToday = document.getElementById('modal-today');
+  const modalSubtasks = document.getElementById('modal-subtasks');
+  const modalSubInput = document.getElementById('modal-subtask-input');
+  const modalSubAdd = document.getElementById('modal-subtask-add');
+  const modalSave = document.getElementById('modal-save');
+  const modalCancel = document.getElementById('modal-cancel');
+  const modalClose = document.getElementById('modal-close');
+
+  let pendingSubtasks = []; // { title, estimatedMinutes }
+  let modalTodayState = true;
+
+  function updateModalTodayBtn() {
+    if (modalTodayState) {
+      modalToday.className = 'today-toggle-btn is-today';
+      modalToday.innerHTML = '<span class="today-dot"></span> Planned for today';
+    } else {
+      modalToday.className = 'today-toggle-btn';
+      modalToday.innerHTML = '+ Plan for today';
+    }
+  }
+
+  modalToday.addEventListener('click', () => {
+    modalTodayState = !modalTodayState;
+    updateModalTodayBtn();
   });
-  estimateInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') addTodo();
-  });
+  const modalSubEstimate = document.getElementById('modal-subtask-estimate');
 
-  async function addTodo() {
-    const title = todoInput.value.trim();
-    if (!title) return;
+  function openModal() {
+    modalTitle.value = '';
+    modalEstimate.value = '';
+    modalProject.value = '';
+    modalTodayState = activeView === 'today';
+    updateModalTodayBtn();
+    pendingSubtasks = [];
+    renderModalSubtasks();
+    modal.classList.remove('hidden');
+    modalTitle.focus();
+  }
 
-    const estimatedMinutes = parseTimeInput(estimateInput.value);
+  function closeModal() {
+    modal.classList.add('hidden');
+  }
 
-    todos.push({
+  function renderModalSubtasks() {
+    modalSubtasks.innerHTML = '';
+    pendingSubtasks.forEach((sub, i) => {
+      const row = document.createElement('div');
+      row.className = 'modal-subtask-item';
+
+      const title = document.createElement('span');
+      title.className = 'modal-subtask-title';
+      title.textContent = sub.title;
+      row.appendChild(title);
+
+      if (sub.estimatedMinutes) {
+        const est = document.createElement('span');
+        est.className = 'modal-subtask-est';
+        est.textContent = formatEstimate(sub.estimatedMinutes);
+        row.appendChild(est);
+      }
+
+      const del = document.createElement('button');
+      del.className = 'modal-subtask-remove';
+      del.innerHTML = '&times;';
+      del.addEventListener('click', () => {
+        pendingSubtasks.splice(i, 1);
+        renderModalSubtasks();
+      });
+      row.appendChild(del);
+      modalSubtasks.appendChild(row);
+    });
+  }
+
+  function addModalSubtask() {
+    const val = modalSubInput.value.trim();
+    if (!val) return;
+    const estMin = parseTimeInput(modalSubEstimate.value);
+    pendingSubtasks.push({ title: val, estimatedMinutes: estMin });
+    modalSubInput.value = '';
+    modalSubEstimate.value = '';
+    renderModalSubtasks();
+    modalSubInput.focus();
+  }
+
+  async function saveModal() {
+    const title = modalTitle.value.trim();
+    if (!title) { modalTitle.focus(); return; }
+
+    const estimatedMinutes = parseTimeInput(modalEstimate.value);
+    const project = modalProject.value.trim() || null;
+
+    const subitems = pendingSubtasks.map((s, i) => ({
+      id: generateId('sub'),
+      title: s.title,
+      completed: false,
+      order: i,
+      estimatedMinutes: s.estimatedMinutes || null,
+    }));
+
+    todos.unshift({
       id: generateId('todo'),
       title,
       completed: false,
       inProgress: false,
       createdAt: Date.now(),
-      order: todos.length,
-      subitems: [],
+      order: 0,
+      subitems,
       estimatedMinutes: (estimatedMinutes && estimatedMinutes > 0) ? estimatedMinutes : null,
       elapsedSeconds: 0,
       timerStartedAt: null,
+      project,
+      isToday: modalTodayState,
     });
+    todos.forEach((t, i) => { t.order = i; });
 
-    todoInput.value = '';
-    estimateInput.value = '';
+    if (project && !knownProjects.includes(project)) knownProjects.push(project);
+
     await invoke('save_todos', { todos, currentTaskId });
+    if (project) await invoke('set_project', { taskId: todos[0].id, project });
+    closeModal();
     render();
-    todoInput.focus();
   }
+
+  addBtn.addEventListener('click', openModal);
+  modalClose.addEventListener('click', closeModal);
+  modalCancel.addEventListener('click', closeModal);
+  modalSave.addEventListener('click', saveModal);
+  modalSubAdd.addEventListener('click', addModalSubtask);
+  modalSubInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); addModalSubtask(); }
+  });
+  modalTitle.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); saveModal(); }
+  });
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) closeModal();
+  });
+
+  // Project autocomplete in modal
+  let modalAcDropdown = null;
+  function showModalProjectAc() {
+    const val = modalProject.value.trim().toLowerCase();
+    const matches = knownProjects.filter(p => p.toLowerCase().includes(val));
+    if (modalAcDropdown) modalAcDropdown.remove();
+    if (matches.length === 0) return;
+    modalAcDropdown = document.createElement('div');
+    modalAcDropdown.className = 'project-autocomplete';
+    matches.forEach(m => {
+      const item = document.createElement('div');
+      item.className = 'project-autocomplete-item';
+      item.textContent = m;
+      item.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        modalProject.value = m;
+        if (modalAcDropdown) { modalAcDropdown.remove(); modalAcDropdown = null; }
+      });
+      modalAcDropdown.appendChild(item);
+    });
+    modalProject.parentElement.appendChild(modalAcDropdown);
+  }
+  modalProject.addEventListener('focus', showModalProjectAc);
+  modalProject.addEventListener('input', showModalProjectAc);
+  modalProject.addEventListener('blur', () => {
+    setTimeout(() => { if (modalAcDropdown) { modalAcDropdown.remove(); modalAcDropdown = null; } }, 150);
+  });
 
   // ══════════════════════════════════════════
   //  TASK OPERATIONS
@@ -387,6 +542,7 @@
 
     todos.splice(idx, 1);
     expandedIds.delete(todoId);
+    syncProjects();
     await invoke('save_todos', { todos, currentTaskId });
     render();
   }
@@ -670,6 +826,116 @@
     document.addEventListener('pointerup', onPointerUp);
   }
 
+  // ── Project group drag ──
+
+  function initProjectDrag(e, headerEl, projectName) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const rect = headerEl.getBoundingClientRect();
+    const offsetX = e.clientX - rect.left;
+    const offsetY = e.clientY - rect.top;
+    let hasMoved = false;
+    const startX = e.clientX;
+    const startY = e.clientY;
+
+    const ghost = headerEl.cloneNode(true);
+    ghost.style.position = 'fixed';
+    ghost.style.left = rect.left + 'px';
+    ghost.style.top = rect.top + 'px';
+    ghost.style.width = rect.width + 'px';
+    ghost.style.zIndex = '9999';
+    ghost.style.opacity = '0.85';
+    ghost.style.pointerEvents = 'none';
+    ghost.style.boxShadow = '0 4px 16px rgba(0,0,0,0.15)';
+    ghost.style.borderRadius = '8px';
+    ghost.style.background = '#f8fafc';
+    ghost.style.transition = 'none';
+
+    const placeholder = document.createElement('div');
+    placeholder.className = 'drop-indicator';
+
+    function onMove(ev) {
+      if (!hasMoved) {
+        const dx = ev.clientX - startX;
+        const dy = ev.clientY - startY;
+        if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
+        hasMoved = true;
+        document.body.appendChild(ghost);
+        headerEl.classList.add('dragging');
+        // Hide all tasks in this project group too
+        let sib = headerEl.nextElementSibling;
+        while (sib && !sib.classList.contains('project-group-header')) {
+          sib.classList.add('dragging');
+          sib = sib.nextElementSibling;
+        }
+      }
+
+      ghost.style.left = (ev.clientX - offsetX) + 'px';
+      ghost.style.top = (ev.clientY - offsetY) + 'px';
+
+      removeDropIndicators();
+      const headers = [...todoList.querySelectorAll('.project-group-header:not(.dragging)')];
+      let inserted = false;
+      for (const h of headers) {
+        const box = h.getBoundingClientRect();
+        if (ev.clientY < box.top + box.height / 2) {
+          todoList.insertBefore(placeholder, h);
+          inserted = true;
+          break;
+        }
+      }
+      if (!inserted && headers.length > 0) {
+        // After the last project group — find the end
+        const lastHeader = headers[headers.length - 1];
+        let afterEl = lastHeader;
+        while (afterEl.nextElementSibling && !afterEl.nextElementSibling.classList.contains('project-group-header')) {
+          afterEl = afterEl.nextElementSibling;
+        }
+        if (afterEl.nextElementSibling) {
+          todoList.insertBefore(placeholder, afterEl.nextElementSibling);
+        } else {
+          todoList.appendChild(placeholder);
+        }
+      }
+    }
+
+    async function onUp(ev) {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      if (!hasMoved) return;
+
+      ghost.remove();
+      removeDropIndicators();
+      todoList.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
+
+      // Find the drop position relative to other project headers
+      const { index } = getInsertIndex(todoList, ev.clientY, '.project-group-header');
+
+      // Get current project order (excluding dragged)
+      const otherProjects = currentProjectOrder.filter(p => p !== projectName);
+      const clampedIdx = Math.min(index, otherProjects.length);
+      otherProjects.splice(clampedIdx, 0, projectName);
+
+      // Reorder todos: project groups in new order, then ungrouped
+      const reordered = [];
+      for (const proj of otherProjects) {
+        const projTodos = todos.filter(t => t.project === proj);
+        reordered.push(...projTodos);
+      }
+      const ungroupedTodos = todos.filter(t => !t.project);
+      reordered.push(...ungroupedTodos);
+      reordered.forEach((t, i) => { t.order = i; });
+      todos = reordered;
+
+      await invoke('reorder_todos', { todoIds: todos.map(t => t.id) });
+      render();
+    }
+
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+  }
+
   // ══════════════════════════════════════════
   //  SVG ICONS
   // ══════════════════════════════════════════
@@ -683,6 +949,17 @@
   const gripDots = '<span></span><span></span><span></span><span></span><span></span><span></span>';
   const subGripDots = '<span></span><span></span><span></span><span></span>';
 
+  // ── Project color helper ──
+
+  const projectColors = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#06b6d4', '#f43f5e', '#84cc16'];
+
+  function getProjectColor(name) {
+    if (!name) return '#94a3b8';
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) hash = ((hash << 5) - hash + name.charCodeAt(i)) | 0;
+    return projectColors[Math.abs(hash) % projectColors.length];
+  }
+
   // ══════════════════════════════════════════
   //  RENDER (FULL MODE)
   // ══════════════════════════════════════════
@@ -695,21 +972,118 @@
 
     todoList.innerHTML = '';
 
-    if (todos.length === 0) {
+    // Filter by active view
+    const viewTodos = activeView === 'today'
+      ? todos.filter(t => t.isToday !== false)
+      : todos;
+
+    if (viewTodos.length === 0) {
       emptyState.classList.remove('hidden');
+      emptyState.querySelector('p').textContent = activeView === 'today'
+        ? 'What needs to get done today?'
+        : 'No tasks yet.';
       footer.classList.add('hidden');
       return;
     }
 
     emptyState.classList.add('hidden');
 
-    // Sort: incomplete tasks first, completed tasks at bottom (preserve order within each group)
-    const sortedTodos = [...todos].sort((a, b) => {
+    // Sort: incomplete tasks first, completed tasks at bottom
+    const sortedTodos = [...viewTodos].sort((a, b) => {
       if (a.completed === b.completed) return 0;
       return a.completed ? 1 : -1;
     });
 
-    sortedTodos.forEach(todo => {
+    // Group by project
+    const ungrouped = sortedTodos.filter(t => !t.project);
+    const projectMap = new Map();
+    for (const t of sortedTodos) {
+      if (t.project) {
+        if (!projectMap.has(t.project)) projectMap.set(t.project, []);
+        projectMap.get(t.project).push(t);
+      }
+    }
+    currentProjectOrder = [...projectMap.keys()];
+
+    // Render project groups first, then ungrouped tasks
+    for (const [projectName, projectTodos] of projectMap) {
+      const isCollapsed = collapsedProjects.has(projectName);
+      const color = getProjectColor(projectName);
+      const incompleteCount = projectTodos.filter(t => !t.completed).length;
+
+      const header = document.createElement('div');
+      header.className = 'project-group-header' + (isCollapsed ? ' collapsed' : '');
+      header.setAttribute('data-project', projectName);
+
+      const headerGrip = document.createElement('div');
+      headerGrip.className = 'project-group-grip';
+      headerGrip.innerHTML = subGripDots;
+      headerGrip.addEventListener('pointerdown', (e) => {
+        initProjectDrag(e, header, projectName);
+      });
+
+      header.innerHTML = '';
+      header.appendChild(headerGrip);
+
+      const chevron = document.createElement('svg');
+      chevron.className = 'project-group-chevron';
+      chevron.setAttribute('viewBox', '0 0 12 12');
+      chevron.innerHTML = '<path d="M4 2l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>';
+
+      const dot = document.createElement('span');
+      dot.className = 'project-group-dot';
+      dot.style.background = color;
+
+      const name = document.createElement('span');
+      name.className = 'project-group-name';
+      name.textContent = projectName;
+
+      const count = document.createElement('span');
+      count.className = 'project-group-count';
+      count.textContent = incompleteCount;
+
+      header.appendChild(chevron);
+      header.appendChild(dot);
+      header.appendChild(name);
+      header.appendChild(count);
+
+      header.addEventListener('click', (e) => {
+        if (e.target.closest('.project-group-grip')) return;
+        if (collapsedProjects.has(projectName)) collapsedProjects.delete(projectName);
+        else collapsedProjects.add(projectName);
+        render();
+      });
+      todoList.appendChild(header);
+
+      if (!isCollapsed) {
+        projectTodos.forEach(todo => renderTodoItem(todo, todoList));
+      }
+    }
+
+    // Visual separator before ungrouped tasks
+    if (ungrouped.length > 0 && projectMap.size > 0) {
+      const sep = document.createElement('div');
+      sep.className = 'ungrouped-separator';
+      todoList.appendChild(sep);
+    }
+
+    // Render ungrouped tasks after project groups
+    ungrouped.forEach(todo => renderTodoItem(todo, todoList));
+
+    // Footer
+    const completed = viewTodos.filter(t => t.completed).length;
+    if (viewTodos.length > 0) {
+      footer.textContent = `${completed} of ${viewTodos.length} task${viewTodos.length !== 1 ? 's' : ''} complete`;
+      footer.classList.remove('hidden');
+    } else {
+      footer.classList.add('hidden');
+    }
+
+    // Header total time
+    updateHeaderTotalTime();
+  }
+
+  function renderTodoItem(todo, container) {
       const isExpanded = expandedIds.has(todo.id);
       const isInProgress = todo.id === currentTaskId;
 
@@ -785,6 +1159,14 @@
       // Actions container
       const actions = document.createElement('div');
       actions.className = 'todo-actions';
+
+      // Today dot indicator (in All Tasks view)
+      if (activeView === 'all' && todo.isToday !== false) {
+        const dot = document.createElement('span');
+        dot.className = 'today-dot';
+        dot.title = 'Planned for today';
+        actions.appendChild(dot);
+      }
 
       // Timer display for in-progress task
       if (isInProgress && !todo.completed) {
@@ -876,6 +1258,91 @@
         estRow.appendChild(estLabel);
         estRow.appendChild(estField);
         detail.appendChild(estRow);
+      }
+
+      // Project field
+      if (!todo.completed) {
+        const projRow = document.createElement('div');
+        projRow.className = 'project-row';
+
+        const projLabel = document.createElement('span');
+        projLabel.className = 'project-label';
+        projLabel.textContent = 'Project';
+
+        const projWrapper = document.createElement('div');
+        projWrapper.className = 'project-input-wrapper';
+
+        const projInput = document.createElement('input');
+        projInput.type = 'text';
+        projInput.className = 'project-input';
+        projInput.placeholder = 'No project';
+        projInput.value = todo.project || '';
+
+        let acDropdown = null;
+
+        const showAutocomplete = () => {
+          const val = projInput.value.trim().toLowerCase();
+          const matches = knownProjects.filter(p => p.toLowerCase().includes(val) && p !== todo.project);
+          if (acDropdown) acDropdown.remove();
+          if (matches.length === 0) return;
+          acDropdown = document.createElement('div');
+          acDropdown.className = 'project-autocomplete';
+          matches.forEach(m => {
+            const item = document.createElement('div');
+            item.className = 'project-autocomplete-item';
+            item.textContent = m;
+            item.addEventListener('mousedown', async (e) => {
+              e.preventDefault();
+              projInput.value = m;
+              todo.project = m;
+              await invoke('set_project', { taskId: todo.id, project: m });
+              syncProjects();
+              if (acDropdown) acDropdown.remove();
+              acDropdown = null;
+              render();
+            });
+            acDropdown.appendChild(item);
+          });
+          projWrapper.appendChild(acDropdown);
+        };
+
+        projInput.addEventListener('focus', showAutocomplete);
+        projInput.addEventListener('input', showAutocomplete);
+        projInput.addEventListener('blur', async () => {
+          setTimeout(() => { if (acDropdown) { acDropdown.remove(); acDropdown = null; } }, 150);
+          const val = projInput.value.trim() || null;
+          if (val !== (todo.project || null)) {
+            todo.project = val;
+            await invoke('set_project', { taskId: todo.id, project: val });
+            syncProjects();
+            render();
+          }
+        });
+
+        projWrapper.appendChild(projInput);
+        projRow.appendChild(projLabel);
+        projRow.appendChild(projWrapper);
+        detail.appendChild(projRow);
+      }
+
+      // Today toggle
+      {
+        const todayRow = document.createElement('div');
+        todayRow.className = 'today-toggle-row';
+        const todayBtn = document.createElement('button');
+        const isTodayTask = todo.isToday !== false;
+        todayBtn.className = 'today-toggle-btn' + (isTodayTask ? ' is-today' : '');
+        todayBtn.innerHTML = isTodayTask
+          ? '<span class="today-dot"></span> Planned for today'
+          : '+ Plan for today';
+        todayBtn.addEventListener('click', async () => {
+          const newVal = !isTodayTask;
+          todo.isToday = newVal;
+          await invoke('set_today', { taskId: todo.id, isToday: newVal });
+          render();
+        });
+        todayRow.appendChild(todayBtn);
+        detail.appendChild(todayRow);
       }
 
       // Subitems
@@ -1012,20 +1479,7 @@
       detail.appendChild(deleteRow);
 
       item.appendChild(detail);
-      todoList.appendChild(item);
-    });
-
-    // Footer
-    const completed = todos.filter(t => t.completed).length;
-    if (todos.length > 0) {
-      footer.textContent = `${completed} of ${todos.length} task${todos.length !== 1 ? 's' : ''} complete`;
-      footer.classList.remove('hidden');
-    } else {
-      footer.classList.add('hidden');
-    }
-
-    // Header total time
-    updateHeaderTotalTime();
+      container.appendChild(item);
   }
 
   // ══════════════════════════════════════════

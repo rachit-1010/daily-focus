@@ -39,10 +39,9 @@ body.mode-compact { background: transparent; }
 /* ── Header (drag bar + app title) ── */
 .header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 20px 8px;
-  padding-top: 38px;
+  flex-direction: column;
+  padding: 0 20px;
+  padding-top: 20px;
   flex-shrink: 0;
   cursor: grab;
   position: relative;
@@ -64,6 +63,12 @@ body.mode-compact { background: transparent; }
   border-radius: 0 0 3px 3px;
 }
 
+.header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .header-left {
   display: flex;
   align-items: center;
@@ -82,24 +87,33 @@ body.mode-compact { background: transparent; }
   text-transform: uppercase;
 }
 
+.header-date {
+  font-size: 11px;
+  color: #cbd5e1;
+  font-weight: 500;
+  margin-left: 2px;
+}
+
 .header-right {
   display: flex;
   align-items: center;
-  gap: 8px;
-}
-
-.header-date {
-  font-size: 11px;
-  color: #94a3b8;
-  font-weight: 500;
+  gap: 6px;
 }
 
 .header-total-time {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   color: #6366f1;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  margin-right: 2px;
+}
+
+.header-tabs {
+  padding: 8px 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .mode-toggle-btn {
@@ -122,34 +136,32 @@ body.mode-compact { background: transparent; }
 }
 
 /* ── Add Todo ── */
-.add-todo {
+/* ── Add Task Button ── */
+
+#add-btn {
   display: flex;
-  gap: 8px;
-  padding: 8px 20px 12px;
-  -webkit-app-region: no-drag;
-  flex-shrink: 0;
-}
-
-#todo-input {
-  flex: 1;
-  padding: 10px 14px;
-  border: 1.5px solid #e2e8f0;
-  border-radius: 10px;
-  font-size: 14px;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border: none;
+  border-radius: 8px;
+  background: #6366f1;
+  color: #fff;
+  font-size: 12px;
   font-family: inherit;
-  outline: none;
-  background: #fff;
-  color: #0f172a;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+  margin-left: auto;
+  -webkit-app-region: no-drag;
 }
 
-#todo-input:focus {
-  border-color: #6366f1;
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+#add-btn:hover {
+  background: #4f46e5;
 }
 
-#todo-input::placeholder {
-  color: #94a3b8;
+#add-btn svg {
+  flex-shrink: 0;
 }
 
 /* ── Estimate Field (clock icon + input pill) ── */
@@ -159,7 +171,7 @@ body.mode-compact { background: transparent; }
   gap: 5px;
   padding: 0 8px;
   border: 1.5px solid #e2e8f0;
-  border-radius: 10px;
+  border-radius: 8px;
   background: #fff;
   flex-shrink: 0;
   transition: border-color 0.15s, box-shadow 0.15s;
@@ -210,25 +222,298 @@ body.mode-compact { background: transparent; }
   height: 10px;
 }
 
-#add-btn {
-  width: 38px;
-  height: 38px;
+/* ── Add Task Modal ── */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.3);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  -webkit-app-region: no-drag;
+}
+
+.modal-overlay.hidden {
+  display: none;
+}
+
+.modal {
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05);
+  width: 340px;
+  max-height: 90vh;
+  overflow-y: auto;
+  animation: modal-in 0.15s ease-out;
+}
+
+@keyframes modal-in {
+  from { opacity: 0; transform: scale(0.97) translateY(4px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px 0;
+}
+
+.modal-header h2 {
+  font-size: 15px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.modal-close {
+  width: 28px;
+  height: 28px;
   border: none;
-  border-radius: 10px;
-  background: #6366f1;
-  color: #fff;
-  font-size: 20px;
-  font-weight: 300;
+  background: none;
+  font-size: 18px;
+  color: #94a3b8;
+  cursor: pointer;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-close:hover {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.modal-body {
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.modal-field label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.modal-field input[type="text"] {
+  padding: 8px 12px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  background: #fff;
+  color: #0f172a;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.modal-field input[type="text"]:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+}
+
+.modal-field input[type="text"]::placeholder {
+  color: #cbd5e1;
+}
+
+.modal-row {
+  display: flex;
+  gap: 10px;
+}
+
+.modal-field.half {
+  flex: 1;
+}
+
+.modal-field.half-auto {
+  flex: 0 0 auto;
+}
+
+/* Override: estimate inputs inside modals should not get the generic modal input border */
+.modal-field .estimate-field input,
+.modal-add-subtask .estimate-field input {
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0;
+  width: 32px;
+  font-size: 12px;
+  text-align: center;
+  background: transparent;
+}
+
+/* Match estimate field height to adjacent inputs in modal */
+.modal-field .estimate-field.sm,
+.modal-add-subtask .estimate-field.sm {
+  padding: 7px 8px;
+  border-radius: 8px;
+  border-width: 1.5px;
+}
+
+.modal-field .today-toggle-btn {
+  margin-top: 0;
+}
+
+/* Modal subtasks */
+.modal-subtasks {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.modal-subtask-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: #f8fafc;
+  border: 1px solid #f1f5f9;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #0f172a;
+}
+
+.modal-subtask-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modal-subtask-est {
+  font-size: 11px;
+  color: #94a3b8;
+  font-weight: 500;
+  flex-shrink: 0;
+  background: #eef2ff;
+  color: #6366f1;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.modal-subtask-remove {
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: none;
+  color: #cbd5e1;
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-subtask-remove:hover {
+  color: #ef4444;
+  background: #fef2f2;
+}
+
+.modal-add-subtask {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.modal-add-subtask > input[type="text"] {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  min-width: 0;
+}
+
+.modal-add-subtask > input[type="text"]:focus {
+  border-color: #6366f1;
+}
+
+.modal-add-subtask .estimate-field.sm {
+  flex-shrink: 0;
+}
+
+.modal-add-subtask button {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #fff;
+  color: #94a3b8;
+  font-size: 16px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s;
-  flex-shrink: 0;
 }
 
-#add-btn:hover {
+.modal-add-subtask button:hover {
+  border-color: #6366f1;
+  color: #6366f1;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px 16px;
+}
+
+.modal-btn {
+  padding: 7px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.modal-btn.cancel {
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #64748b;
+}
+
+.modal-btn.cancel:hover {
+  background: #f8fafc;
+}
+
+.modal-btn.save {
+  border: none;
+  background: #6366f1;
+  color: #fff;
+}
+
+.modal-btn.save:hover {
   background: #4f46e5;
+}
+
+.modal-field .project-input-wrapper {
+  position: relative;
+}
+
+.modal-field .project-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 14px;
 }
 
 /* ── Todo List ── */
@@ -783,7 +1068,252 @@ body.mode-compact { background: transparent; }
   display: none;
 }
 
-/* ── Day Reset Banner ── */
+/* ── View Switcher ── */
+
+.view-switcher {
+  display: inline-flex;
+  background: #f1f5f9;
+  border-radius: 8px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.view-tab {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 14px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  background: transparent;
+  color: #94a3b8;
+  transition: all 0.15s;
+}
+
+.view-tab.active {
+  background: #fff;
+  color: #6366f1;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.view-tab:hover:not(.active) {
+  color: #64748b;
+}
+
+/* ── Project Group Headers ── */
+
+.project-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px 4px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.project-group-header:first-child {
+  padding-top: 4px;
+}
+
+.project-group-grip {
+  display: flex;
+  flex-wrap: wrap;
+  width: 8px;
+  gap: 2px;
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+
+.project-group-header:hover .project-group-grip {
+  opacity: 0.4;
+}
+
+.project-group-grip:active {
+  cursor: grabbing;
+}
+
+.project-group-grip span {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: #94a3b8;
+}
+
+.project-group-chevron {
+  width: 12px;
+  height: 12px;
+  color: #94a3b8;
+  transition: transform 0.15s;
+  flex-shrink: 0;
+}
+
+.project-group-header.collapsed .project-group-chevron {
+  transform: rotate(-90deg);
+}
+
+.project-group-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.project-group-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.project-group-count {
+  font-size: 10px;
+  color: #cbd5e1;
+  font-weight: 500;
+}
+
+/* ── Project Pill (on task card) ── */
+
+.project-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: #94a3b8;
+  font-weight: 500;
+  white-space: nowrap;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-pill-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ── Ungrouped separator ── */
+
+.ungrouped-separator {
+  height: 1px;
+  background: #e2e8f0;
+  margin: 10px 16px 6px;
+}
+
+/* ── Today Dot Indicator (All Tasks view) ── */
+
+.today-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #6366f1;
+  flex-shrink: 0;
+  margin-right: 2px;
+}
+
+/* ── Detail Section: Project Field ── */
+
+.project-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.project-label {
+  font-size: 12px;
+  color: #94a3b8;
+  flex-shrink: 0;
+  width: 60px;
+}
+
+.project-input-wrapper {
+  position: relative;
+  flex: 1;
+}
+
+.project-input {
+  width: 100%;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 4px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  outline: none;
+  background: #fff;
+}
+
+.project-input:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+}
+
+.project-autocomplete {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  z-index: 10;
+  max-height: 120px;
+  overflow-y: auto;
+  margin-top: 2px;
+}
+
+.project-autocomplete-item {
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  color: #0f172a;
+}
+
+.project-autocomplete-item:hover,
+.project-autocomplete-item.selected {
+  background: #f1f5f9;
+}
+
+/* ── Detail Section: Today Toggle ── */
+
+.today-toggle-row {
+  display: flex;
+  align-items: center;
+  padding: 6px 0;
+}
+
+.today-toggle-btn {
+  font-family: inherit;
+  font-size: 12px;
+  padding: 4px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  cursor: pointer;
+  background: #fff;
+  color: #64748b;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.today-toggle-btn:hover {
+  border-color: #6366f1;
+  color: #6366f1;
+}
+
+.today-toggle-btn.is-today {
+  color: #6366f1;
+  border-color: #c7d2fe;
+  background: #eef2ff;
+}
 
 /* ── Scrollbar ── */
 .todo-list::-webkit-scrollbar {

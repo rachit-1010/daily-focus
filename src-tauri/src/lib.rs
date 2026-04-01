@@ -46,6 +46,8 @@ struct AppData {
     #[serde(default)]
     compact_mode: bool,
     window_position: Option<Position>,
+    #[serde(default)]
+    projects: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -73,6 +75,14 @@ struct Todo {
     timer_started_at: Option<u64>,
     #[serde(default)]
     time_logs: Vec<TimeLog>,
+    #[serde(default)]
+    project: Option<String>,
+    #[serde(default = "default_true")]
+    is_today: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -448,6 +458,34 @@ fn reorder_todos(store: tauri::State<DataStore>, todo_ids: Vec<String>) {
             }
         }
         data.todos.sort_by_key(|t| t.order);
+    }
+    store.save();
+}
+
+#[tauri::command]
+fn set_project(store: tauri::State<DataStore>, task_id: String, project: Option<String>) {
+    {
+        let mut data = store.data.lock().unwrap();
+        if let Some(todo) = data.todos.iter_mut().find(|t| t.id == task_id) {
+            todo.project = project.clone();
+        }
+        // Add to known projects list if new
+        if let Some(ref p) = project {
+            if !p.is_empty() && !data.projects.contains(p) {
+                data.projects.push(p.clone());
+            }
+        }
+    }
+    store.save();
+}
+
+#[tauri::command]
+fn set_today(store: tauri::State<DataStore>, task_id: String, is_today: bool) {
+    {
+        let mut data = store.data.lock().unwrap();
+        if let Some(todo) = data.todos.iter_mut().find(|t| t.id == task_id) {
+            todo.is_today = is_today;
+        }
     }
     store.save();
 }
@@ -1074,6 +1112,8 @@ pub fn run() {
             reorder_todos,
             reorder_subitems,
             resize_compact,
+            set_project,
+            set_today,
             open_page_window,
             close_page_window,
             load_page,
