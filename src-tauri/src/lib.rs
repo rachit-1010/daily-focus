@@ -405,18 +405,8 @@ fn toggle_compact_mode(store: tauri::State<DataStore>, app: AppHandle, compact: 
 
     if let Some(win) = app.get_webview_window("main") {
         if compact {
-            let data = store.data.lock().unwrap();
-            let current_todo = data
-                .current_task_id
-                .as_ref()
-                .and_then(|id| data.todos.iter().find(|t| t.id == *id));
-            let sub_count = current_todo.map(|t| t.subitems.len()).unwrap_or(0);
-            // progress bar adds ~15px when subtasks exist
-            let progress_extra = if sub_count > 0 { 15.0 } else { 0.0 };
-            let height = (110.0 + progress_extra + sub_count as f64 * 30.0).max(90.0).min(400.0);
-            drop(data);
-
-            let _ = win.set_size(tauri::Size::Logical(tauri::LogicalSize::new(340.0, height)));
+            // Width only — JS will measure content and set the exact height
+            let _ = win.set_size(tauri::Size::Logical(tauri::LogicalSize::new(340.0, 200.0)));
             let _ = win.set_always_on_top(true);
             let _ = win.set_resizable(false);
             let _ = win.set_decorations(false);
@@ -506,26 +496,6 @@ fn reorder_subitems(store: tauri::State<DataStore>, task_id: String, subitem_ids
     store.save();
 }
 
-#[tauri::command]
-fn resize_compact(store: tauri::State<DataStore>, app: AppHandle) {
-    let data = store.data.lock().unwrap();
-    if !data.compact_mode {
-        return;
-    }
-    let current_todo = data
-        .current_task_id
-        .as_ref()
-        .and_then(|id| data.todos.iter().find(|t| t.id == *id));
-    let sub_count = current_todo.map(|t| t.subitems.len()).unwrap_or(0);
-    // progress bar adds ~15px when subtasks exist
-    let progress_extra = if sub_count > 0 { 15.0 } else { 0.0 };
-    let height = (110.0 + progress_extra + sub_count as f64 * 30.0).max(90.0).min(400.0);
-    drop(data);
-
-    if let Some(win) = app.get_webview_window("main") {
-        let _ = win.set_size(tauri::Size::Logical(tauri::LogicalSize::new(340.0, height)));
-    }
-}
 
 // ── Page (notes) commands ──
 
@@ -1115,7 +1085,6 @@ pub fn run() {
             set_estimate,
             reorder_todos,
             reorder_subitems,
-            resize_compact,
             set_project,
             set_today,
             open_page_window,

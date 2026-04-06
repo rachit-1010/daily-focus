@@ -2,8 +2,16 @@
   'use strict';
 
   const { invoke } = window.__TAURI__.core;
-  const { getCurrentWindow } = window.__TAURI__.window;
+  const { getCurrentWindow, LogicalSize } = window.__TAURI__.window;
   const appWindow = getCurrentWindow();
+
+  async function resizeCompactToContent() {
+    if (!isCompactMode) return;
+    const el = document.querySelector('.compact-mode-container');
+    if (!el) return;
+    const height = el.scrollHeight;
+    await appWindow.setSize(new LogicalSize(340, height));
+  }
 
   // ── Helpers ──
 
@@ -203,6 +211,7 @@
     applyMode(compact);
     await invoke('toggle_compact_mode', { compact });
     render();
+    if (compact) await resizeCompactToContent();
   }
 
   function applyMode(compact) {
@@ -578,7 +587,7 @@
 
     await invoke('save_todos', { todos, currentTaskId });
     if (isCompactMode) {
-      await invoke('resize_compact');
+      await resizeCompactToContent();
     }
     render();
 
@@ -593,7 +602,7 @@
     todo.subitems = todo.subitems.filter(s => s.id !== subitemId);
     await invoke('save_todos', { todos, currentTaskId });
     if (isCompactMode) {
-      await invoke('resize_compact');
+      await resizeCompactToContent();
     }
     render();
   }
@@ -822,7 +831,7 @@
         todo.subitems = reordered;
 
         await invoke('reorder_subitems', { taskId: parentId, subitemIds: subIds });
-        await invoke('resize_compact');
+        await resizeCompactToContent();
         renderCompact();
       }
     }
@@ -1030,10 +1039,9 @@
       header.innerHTML = '';
       header.appendChild(headerGrip);
 
-      const chevron = document.createElement('svg');
-      chevron.className = 'project-group-chevron';
-      chevron.setAttribute('viewBox', '0 0 12 12');
-      chevron.innerHTML = '<path d="M4 2l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>';
+      const chevronBtn = document.createElement('button');
+      chevronBtn.className = 'project-group-chevron-btn';
+      chevronBtn.innerHTML = '<svg class="project-group-chevron" viewBox="0 0 12 12" xmlns="http://www.w3.org/2000/svg"><path d="M4 2l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>';
 
       const dot = document.createElement('span');
       dot.className = 'project-group-dot';
@@ -1047,13 +1055,13 @@
       count.className = 'project-group-count';
       count.textContent = incompleteCount;
 
-      header.appendChild(chevron);
+      header.appendChild(chevronBtn);
       header.appendChild(dot);
       header.appendChild(name);
       header.appendChild(count);
 
-      header.addEventListener('click', (e) => {
-        if (e.target.closest('.project-group-grip')) return;
+      chevronBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
         if (collapsedProjects.has(projectName)) collapsedProjects.delete(projectName);
         else collapsedProjects.add(projectName);
         render();
@@ -1210,6 +1218,19 @@
         playBtn.title = isInProgress ? 'Stop focusing' : 'Focus on this';
         playBtn.addEventListener('click', () => markInProgress(todo.id));
         actions.appendChild(playBtn);
+      }
+
+      // Back to focus view button (only on in-progress task in full mode)
+      if (isInProgress && !isCompactMode) {
+        const focusBtn = document.createElement('button');
+        focusBtn.className = 'action-btn focus-btn';
+        focusBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M5 2L5 4L3 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 12L9 10L11 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+        focusBtn.title = 'Back to focus view';
+        focusBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          toggleMode(true);
+        });
+        actions.appendChild(focusBtn);
       }
 
       // Delete button moved to detail section
@@ -1549,7 +1570,7 @@
           sub.completed = !sub.completed;
           sortSubitemsCompletedLast(task);
           await invoke('save_todos', { todos, currentTaskId });
-          await invoke('resize_compact');
+          await resizeCompactToContent();
           renderCompact();
         });
 
@@ -1571,10 +1592,72 @@
 
         compactSubtaskList.appendChild(row);
       });
-      compactSubtaskList.style.display = 'flex';
-    } else {
-      compactSubtaskList.style.display = 'none';
     }
+
+    // Add subtask — subtle trigger that expands into input row
+    const addWrapper = document.createElement('div');
+    addWrapper.className = 'compact-add-sub-wrapper';
+
+    const trigger = document.createElement('button');
+    trigger.className = 'compact-add-sub-trigger';
+    trigger.textContent = '+ Add a subtask';
+
+    const addRow = document.createElement('div');
+    addRow.className = 'compact-add-sub';
+    addRow.style.display = 'none';
+
+    const addInput = document.createElement('input');
+    addInput.type = 'text';
+    addInput.placeholder = 'Add a subtask...';
+    addInput.setAttribute('data-subinput', task.id);
+
+    const subEstField = document.createElement('div');
+    subEstField.className = 'estimate-field sm';
+    subEstField.innerHTML = clockSvg;
+    const subEstInput = document.createElement('input');
+    subEstInput.type = 'text';
+    subEstInput.placeholder = '0:00';
+    subEstField.appendChild(subEstInput);
+
+    const collapse = () => {
+      addRow.style.display = 'none';
+      trigger.style.display = '';
+    };
+
+    const doAdd = () => {
+      if (addInput.value.trim()) {
+        addSubitem(task.id, addInput.value.trim(), subEstInput.value);
+        addInput.value = '';
+        subEstInput.value = '';
+      }
+    };
+    addInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') doAdd();
+      if (e.key === 'Escape') collapse();
+    });
+    subEstInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') doAdd();
+      if (e.key === 'Escape') collapse();
+    });
+
+    const addBtn = document.createElement('button');
+    addBtn.textContent = 'Add';
+    addBtn.addEventListener('click', doAdd);
+
+    trigger.addEventListener('click', () => {
+      trigger.style.display = 'none';
+      addRow.style.display = '';
+      addInput.focus();
+    });
+
+    addRow.appendChild(addInput);
+    addRow.appendChild(subEstField);
+    addRow.appendChild(addBtn);
+    addWrapper.appendChild(trigger);
+    addWrapper.appendChild(addRow);
+    compactSubtaskList.appendChild(addWrapper);
+    compactSubtaskList.style.display = 'flex';
+    resizeCompactToContent();
   }
 
   // ── Compact complete — auto-expand to full view ──
