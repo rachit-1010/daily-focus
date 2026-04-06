@@ -129,6 +129,7 @@ enum PageType {
     Task,
     Daily,
     Note,
+    Project,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -233,6 +234,8 @@ fn infer_page_type(id: &str) -> PageType {
         PageType::Task
     } else if id.starts_with("daily_") {
         PageType::Daily
+    } else if id.starts_with("project_") {
+        PageType::Project
     } else {
         PageType::Note
     }
@@ -606,6 +609,9 @@ fn save_page(
                 })
         }
         PageType::Daily => format_daily_title(&task_id),
+        PageType::Project => {
+            task_id.strip_prefix("project_").unwrap_or(&task_id).to_string()
+        }
         PageType::Note => {
             // For notes, preserve existing title
             let meta = page_meta_store.data.lock().unwrap();
@@ -686,6 +692,7 @@ fn list_all_pages(
                     .map(|t| t.title.clone())
                     .unwrap_or_else(|| file_id.clone()),
                 PageType::Daily => format_daily_title(file_id),
+                PageType::Project => file_id.strip_prefix("project_").unwrap_or(file_id).to_string(),
                 PageType::Note => "Untitled".to_string(),
             };
 
@@ -1013,6 +1020,26 @@ fn load_timeline(store: tauri::State<DataStore>, task_id: String) -> Vec<Timelin
 
             if !day_bouts.is_empty() {
                 bouts.extend(day_bouts);
+                color_idx = (color_idx + 1).min(4);
+            }
+        }
+
+        bouts.sort_by_key(|b| b.start_ms);
+        bouts
+    } else if task_id.starts_with("project_") {
+        // Project page: aggregate bouts from all tasks in this project
+        let project_name = &task_id[8..];
+        let mut bouts = Vec::new();
+        let mut color_idx: u8 = 0;
+
+        for todo in &all_todos {
+            if todo.project.as_deref() != Some(project_name) || todo.time_logs.is_empty() {
+                continue;
+            }
+            let raw = compute_bouts_from_logs(todo, &todo.title, color_idx);
+            let split = split_bouts_at_midnight(raw);
+            if !split.is_empty() {
+                bouts.extend(split);
                 color_idx = (color_idx + 1).min(4);
             }
         }

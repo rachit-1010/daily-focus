@@ -1055,10 +1055,20 @@
       count.className = 'project-group-count';
       count.textContent = incompleteCount;
 
+      const projPageBtn = document.createElement('button');
+      projPageBtn.className = 'project-group-page-btn';
+      projPageBtn.innerHTML = pageSvg;
+      projPageBtn.title = 'Project notes';
+      projPageBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        invoke('open_page_window', { taskId: 'project_' + projectName });
+      });
+
       header.appendChild(chevronBtn);
       header.appendChild(dot);
       header.appendChild(name);
       header.appendChild(count);
+      header.appendChild(projPageBtn);
 
       chevronBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -1200,16 +1210,6 @@
         actions.appendChild(badge);
       }
 
-      // Page button
-      const pageBtn = document.createElement('button');
-      pageBtn.className = 'action-btn page-btn';
-      pageBtn.innerHTML = pageSvg;
-      pageBtn.title = 'Open page';
-      pageBtn.addEventListener('click', () => {
-        invoke('open_page_window', { taskId: todo.id });
-      });
-      actions.appendChild(pageBtn);
-
       // Play/pause button
       if (!todo.completed) {
         const playBtn = document.createElement('button');
@@ -1219,6 +1219,16 @@
         playBtn.addEventListener('click', () => markInProgress(todo.id));
         actions.appendChild(playBtn);
       }
+
+      // Page button
+      const pageBtn = document.createElement('button');
+      pageBtn.className = 'action-btn page-btn';
+      pageBtn.innerHTML = pageSvg;
+      pageBtn.title = 'Open page';
+      pageBtn.addEventListener('click', () => {
+        invoke('open_page_window', { taskId: todo.id });
+      });
+      actions.appendChild(pageBtn);
 
       // Back to focus view button (only on in-progress task in full mode)
       if (isInProgress && !isCompactMode) {

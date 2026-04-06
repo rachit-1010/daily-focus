@@ -201,6 +201,11 @@ body {
   color: #059669;
 }
 
+.page-row-icon.type-project {
+  background: #f0f9ff;
+  color: #0284c7;
+}
+
 .page-row-content {
   flex: 1;
   min-width: 0;
@@ -245,6 +250,11 @@ body {
 .page-type-badge.type-note {
   background: #ecfdf5;
   color: #047857;
+}
+
+.page-type-badge.type-project {
+  background: #f0f9ff;
+  color: #0369a1;
 }
 
 .page-row-date {
@@ -705,6 +715,9 @@ body {
 }
 
 .timeline-day-track { position: relative; overflow-x: auto; }
+.timeline-day-track::-webkit-scrollbar { height: 5px; }
+.timeline-day-track::-webkit-scrollbar-track { background: transparent; }
+.timeline-day-track::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
 
 .timeline-day-ticks { position: relative; height: 20px; }
 
@@ -808,6 +821,13 @@ body {
   font-size: 10px;
 }
 
+.hblock-tooltip-title {
+  font-weight: 600;
+  color: #c7d2fe;
+  font-size: 10px;
+  display: block;
+  margin-bottom: 2px;
+}
 
 .timeline-hblock.active {
   animation: pulse-block 2s ease-in-out infinite;

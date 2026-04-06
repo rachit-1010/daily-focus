@@ -1208,6 +1208,23 @@ body.mode-compact { background: transparent; }
   font-weight: 500;
 }
 
+.project-group-page-btn {
+  margin-left: auto;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: #cbd5e1;
+  transition: color 0.15s;
+  padding: 2px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+}
+
+.project-group-page-btn:hover {
+  color: #6366f1;
+}
+
 /* ── Project Pill (on task card) ── */
 
 .project-pill {
