@@ -68,8 +68,9 @@
         <button class="view-btn active" data-view="notes">Notes</button>
         <button class="view-btn" data-view="timeline">Timeline</button>
       </div>
+      <button class="fmt-toggle-btn" id="fmt-toggle-btn" title="Formatting">Aa</button>
     </div>
-    <div class="editor-format-bar" id="editor-format-bar">
+    <div class="editor-format-bar" id="editor-format-bar" style="display:none">
       <button class="fmt-btn" data-cmd="bold" title="Bold"><b>B</b></button>
       <button class="fmt-btn" data-cmd="italic" title="Italic"><i>I</i></button>
       <button class="fmt-btn" data-cmd="strike" title="Strikethrough"><s>S</s></button>
@@ -139,7 +140,15 @@
     const editorTypeBadge = document.getElementById('editor-type-badge');
     const editorContainer = document.getElementById('editor-container');
     const editorFormatBar = document.getElementById('editor-format-bar');
+    const fmtToggleBtn = document.getElementById('fmt-toggle-btn');
     const editorStatus = document.getElementById('editor-status');
+
+    let fmtBarOpen = false;
+    fmtToggleBtn.addEventListener('click', () => {
+      fmtBarOpen = !fmtBarOpen;
+      editorFormatBar.style.display = fmtBarOpen ? '' : 'none';
+      fmtToggleBtn.classList.toggle('active', fmtBarOpen);
+    });
 
     // ── Tiptap editor ──
 
@@ -526,7 +535,7 @@
         loadBrowserTimeline();
       } else {
         editorContainer.style.display = '';
-        editorFormatBar.style.display = '';
+        editorFormatBar.style.display = fmtBarOpen ? '' : 'none';
         browserTimelineContainer.style.display = 'none';
         stopBrowserTimelinePoll();
       }
@@ -649,7 +658,7 @@
         loadBrowserTimeline();
       } else {
         editorContainer.style.display = '';
-        editorFormatBar.style.display = '';
+        editorFormatBar.style.display = fmtBarOpen ? '' : 'none';
         browserTimelineContainer.style.display = 'none';
         stopBrowserTimelinePoll();
       }

@@ -338,8 +338,37 @@ body {
 
 .editor-toggle-row {
   display: flex;
+  align-items: center;
   padding: 0 16px 2px;
   flex-shrink: 0;
+}
+
+.fmt-toggle-btn {
+  margin-left: auto;
+  height: 28px;
+  padding: 0 8px;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s, color 0.12s;
+}
+
+.fmt-toggle-btn:hover {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.fmt-toggle-btn.active {
+  background: #eef2ff;
+  color: #6366f1;
 }
 
 .back-btn {
