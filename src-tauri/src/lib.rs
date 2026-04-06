@@ -523,8 +523,8 @@ fn open_page_window(
 
     let mut builder = tauri::WebviewWindowBuilder::new(&app, label, url)
         .title("All Pages")
-        .inner_size(400.0, 560.0)
-        .min_inner_size(320.0, 400.0);
+        .inner_size(440.0, 560.0)
+        .min_inner_size(352.0, 400.0);
 
     // Position relative to main window
     if let Some(main_win) = app.get_webview_window("main") {
@@ -839,8 +839,8 @@ fn open_pages_browser(app: AppHandle) -> Result<(), String> {
 
     let mut builder = tauri::WebviewWindowBuilder::new(&app, label, url)
         .title("All Pages")
-        .inner_size(400.0, 560.0)
-        .min_inner_size(320.0, 400.0);
+        .inner_size(440.0, 560.0)
+        .min_inner_size(352.0, 400.0);
 
     // Position relative to main window
     if let Some(main_win) = app.get_webview_window("main") {

@@ -69,14 +69,44 @@
         <button class="view-btn" data-view="timeline">Timeline</button>
       </div>
     </div>
+    <div class="editor-format-bar" id="editor-format-bar">
+      <button class="fmt-btn" data-cmd="bold" title="Bold"><b>B</b></button>
+      <button class="fmt-btn" data-cmd="italic" title="Italic"><i>I</i></button>
+      <button class="fmt-btn" data-cmd="strike" title="Strikethrough"><s>S</s></button>
+      <button class="fmt-btn" data-cmd="code" title="Inline code"><code>&lt;&gt;</code></button>
+      <span class="fmt-sep"></span>
+      <button class="fmt-btn" data-cmd="h1" title="Heading 1">H1</button>
+      <button class="fmt-btn" data-cmd="h2" title="Heading 2">H2</button>
+      <button class="fmt-btn" data-cmd="h3" title="Heading 3">H3</button>
+      <span class="fmt-sep"></span>
+      <button class="fmt-btn" data-cmd="bulletList" title="Bullet list">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="2.5" cy="3.5" r="1" fill="currentColor"/><circle cx="2.5" cy="7" r="1" fill="currentColor"/><circle cx="2.5" cy="10.5" r="1" fill="currentColor"/><path d="M5.5 3.5h6M5.5 7h6M5.5 10.5h6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+      </button>
+      <button class="fmt-btn" data-cmd="orderedList" title="Ordered list">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><text x="1" y="5" font-size="5.5" fill="currentColor" font-family="inherit">1.</text><text x="1" y="8.5" font-size="5.5" fill="currentColor" font-family="inherit">2.</text><text x="1" y="12" font-size="5.5" fill="currentColor" font-family="inherit">3.</text><path d="M5.5 3.5h6M5.5 7h6M5.5 10.5h6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+      </button>
+      <button class="fmt-btn" data-cmd="blockquote" title="Blockquote">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 3v8" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><path d="M6.5 5h5M6.5 7.5h4M6.5 10h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+      </button>
+      <button class="fmt-btn" data-cmd="codeBlock" title="Code block">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M4.5 4L2 7l2.5 3M9.5 4L12 7l-2.5 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button class="fmt-btn" data-cmd="horizontalRule" title="Horizontal rule">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </button>
+    </div>
     <div class="editor-wrap">
-      <textarea class="editor-textarea" id="editor-textarea" placeholder="Write your notes here..." spellcheck="true"></textarea>
+      <div class="editor-container" id="editor-container"></div>
       <div class="timeline-container" id="browser-timeline-container" style="display:none"></div>
     </div>
     <div class="editor-status" id="editor-status"></div>
   </div>
 
-  <script>
+  <script type="module">
+    import { Editor } from 'https://esm.sh/@tiptap/core@2';
+    import StarterKit from 'https://esm.sh/@tiptap/starter-kit@2';
+    import Placeholder from 'https://esm.sh/@tiptap/extension-placeholder@2';
+
   (function () {
     'use strict';
 
@@ -107,8 +137,75 @@
     const editorTitleDisplay = document.getElementById('editor-title-display');
     const editorTitleInput = document.getElementById('editor-title-input');
     const editorTypeBadge = document.getElementById('editor-type-badge');
-    const editorTextarea = document.getElementById('editor-textarea');
+    const editorContainer = document.getElementById('editor-container');
+    const editorFormatBar = document.getElementById('editor-format-bar');
     const editorStatus = document.getElementById('editor-status');
+
+    // ── Tiptap editor ──
+
+    let editor = null;
+
+    function contentToHtml(raw) {
+      if (!raw || raw.trim() === '') return '';
+      if (raw.match(/^<[a-z][\s\S]*>/i)) return raw;
+      return raw.split('\n').map(line =>
+        line.trim() === '' ? '<p></p>' : `<p>${line.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</p>`
+      ).join('');
+    }
+
+    function initEditor() {
+      editor = new Editor({
+        element: editorContainer,
+        extensions: [
+          StarterKit,
+          Placeholder.configure({ placeholder: 'Write your notes here...' }),
+        ],
+        content: '',
+        onUpdate: () => scheduleSave(),
+        onSelectionUpdate: () => updateToolbarState(),
+      });
+    }
+
+    function updateToolbarState() {
+      if (!editor) return;
+      editorFormatBar.querySelectorAll('.fmt-btn').forEach(btn => {
+        const cmd = btn.dataset.cmd;
+        let active = false;
+        if (cmd === 'bold') active = editor.isActive('bold');
+        else if (cmd === 'italic') active = editor.isActive('italic');
+        else if (cmd === 'strike') active = editor.isActive('strike');
+        else if (cmd === 'code') active = editor.isActive('code');
+        else if (cmd === 'h1') active = editor.isActive('heading', { level: 1 });
+        else if (cmd === 'h2') active = editor.isActive('heading', { level: 2 });
+        else if (cmd === 'h3') active = editor.isActive('heading', { level: 3 });
+        else if (cmd === 'bulletList') active = editor.isActive('bulletList');
+        else if (cmd === 'orderedList') active = editor.isActive('orderedList');
+        else if (cmd === 'blockquote') active = editor.isActive('blockquote');
+        else if (cmd === 'codeBlock') active = editor.isActive('codeBlock');
+        btn.classList.toggle('active', active);
+      });
+    }
+
+    editorFormatBar.addEventListener('click', (e) => {
+      const btn = e.target.closest('.fmt-btn');
+      if (!btn || !editor) return;
+      const cmd = btn.dataset.cmd;
+      const chain = editor.chain().focus();
+      if (cmd === 'bold') chain.toggleBold().run();
+      else if (cmd === 'italic') chain.toggleItalic().run();
+      else if (cmd === 'strike') chain.toggleStrike().run();
+      else if (cmd === 'code') chain.toggleCode().run();
+      else if (cmd === 'h1') chain.toggleHeading({ level: 1 }).run();
+      else if (cmd === 'h2') chain.toggleHeading({ level: 2 }).run();
+      else if (cmd === 'h3') chain.toggleHeading({ level: 3 }).run();
+      else if (cmd === 'bulletList') chain.toggleBulletList().run();
+      else if (cmd === 'orderedList') chain.toggleOrderedList().run();
+      else if (cmd === 'blockquote') chain.toggleBlockquote().run();
+      else if (cmd === 'codeBlock') chain.toggleCodeBlock().run();
+      else if (cmd === 'horizontalRule') chain.setHorizontalRule().run();
+    });
+
+    initEditor();
 
     // ── SVG icons ──
 
@@ -394,7 +491,7 @@
       }
 
       // Setup editor
-      editorTextarea.value = content;
+      editor.commands.setContent(contentToHtml(content));
 
       // Title
       if (pageMeta.pageType === 'note') {
@@ -417,11 +514,13 @@
       browserViewToggle.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
       browserViewToggle.querySelector(`[data-view="${initialView}"]`).classList.add('active');
       if (initialView === 'timeline') {
-        editorTextarea.style.display = 'none';
+        editorContainer.style.display = 'none';
+        editorFormatBar.style.display = 'none';
         browserTimelineContainer.style.display = '';
         loadBrowserTimeline();
       } else {
-        editorTextarea.style.display = '';
+        editorContainer.style.display = '';
+        editorFormatBar.style.display = '';
         browserTimelineContainer.style.display = 'none';
         stopBrowserTimelinePoll();
       }
@@ -429,7 +528,7 @@
       // Switch views
       listView.classList.add('hidden');
       editorView.classList.remove('hidden');
-      if (initialView !== 'timeline') editorTextarea.focus();
+      if (initialView !== 'timeline') editor.commands.focus();
       editorStatus.textContent = '';
     }
 
@@ -460,15 +559,13 @@
     }
 
     async function saveCurrentPage() {
-      if (!currentPageId) return;
+      if (!currentPageId || !editor) return;
       try {
-        await invoke('save_page', { taskId: currentPageId, content: editorTextarea.value });
+        await invoke('save_page', { taskId: currentPageId, content: editor.getHTML() });
       } catch (e) {
         console.error('Failed to save page:', e);
       }
     }
-
-    editorTextarea.addEventListener('input', scheduleSave);
 
     // ── Title rename for notes ──
 
@@ -488,20 +585,7 @@
     editorTitleInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        editorTextarea.focus();
-      }
-    });
-
-    // ── Tab key inserts spaces ──
-
-    editorTextarea.addEventListener('keydown', (e) => {
-      if (e.key === 'Tab') {
-        e.preventDefault();
-        const start = editorTextarea.selectionStart;
-        const end = editorTextarea.selectionEnd;
-        editorTextarea.value = editorTextarea.value.substring(0, start) + '  ' + editorTextarea.value.substring(end);
-        editorTextarea.selectionStart = editorTextarea.selectionEnd = start + 2;
-        scheduleSave();
+        if (editor) editor.commands.focus();
       }
     });
 
@@ -509,8 +593,8 @@
 
     window.addEventListener('beforeunload', () => {
       clearTimeout(saveTimer);
-      if (currentPageId) {
-        invoke('save_page', { taskId: currentPageId, content: editorTextarea.value });
+      if (currentPageId && editor) {
+        invoke('save_page', { taskId: currentPageId, content: editor.getHTML() });
       }
       stopBrowserTimelinePoll();
     });
@@ -553,11 +637,13 @@
       btn.classList.add('active');
 
       if (browserCurrentView === 'timeline') {
-        editorTextarea.style.display = 'none';
+        editorContainer.style.display = 'none';
+        editorFormatBar.style.display = 'none';
         browserTimelineContainer.style.display = '';
         loadBrowserTimeline();
       } else {
-        editorTextarea.style.display = '';
+        editorContainer.style.display = '';
+        editorFormatBar.style.display = '';
         browserTimelineContainer.style.display = 'none';
         stopBrowserTimelinePoll();
       }

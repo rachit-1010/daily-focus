@@ -322,13 +322,13 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 14px 16px 6px;
+  padding: 6px 16px 6px;
   flex-shrink: 0;
 }
 
 .editor-toggle-row {
   display: flex;
-  padding: 0 16px 8px;
+  padding: 0 16px 2px;
   flex-shrink: 0;
 }
 
@@ -400,6 +400,59 @@ body {
 
 /* ── Editor Area ── */
 
+/* ── Format Toolbar ── */
+
+.editor-format-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 16px;
+  flex-wrap: wrap;
+}
+
+.fmt-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #64748b;
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 500;
+  transition: background 0.12s, color 0.12s;
+}
+
+.fmt-btn:hover {
+  background: #f1f5f9;
+  color: #1e293b;
+}
+
+.fmt-btn.active {
+  background: #eef2ff;
+  color: #6366f1;
+}
+
+.fmt-btn code {
+  font-size: 11px;
+  font-family: 'SF Mono', 'Menlo', monospace;
+}
+
+.fmt-sep {
+  width: 1px;
+  height: 16px;
+  background: #e2e8f0;
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+/* ── Editor Container ── */
+
 .editor-wrap {
   flex: 1;
   min-height: 0;
@@ -407,32 +460,126 @@ body {
   display: flex;
 }
 
-.editor-textarea {
+.editor-container {
   flex: 1;
-  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
   border: 1px solid #e8ecf1;
   border-radius: 12px;
-  font-size: 14px;
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
-  line-height: 1.75;
-  color: #0f172a;
-  resize: none;
-  outline: none;
   background: #fff;
+  overflow: hidden;
   transition: border-color 0.15s, box-shadow 0.15s;
-  tab-size: 2;
-  white-space: pre-wrap;
-  word-wrap: break-word;
 }
 
-.editor-textarea:focus {
+.editor-container:focus-within {
   border-color: #a5b4fc;
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.06);
 }
 
-.editor-textarea::placeholder {
+.editor-container .tiptap {
+  flex: 1;
+  padding: 16px 18px;
+  font-size: 14px;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+  line-height: 1.75;
+  color: #0f172a;
+  outline: none;
+  overflow-y: auto;
+}
+
+/* ── Tiptap Content Styles ── */
+
+.editor-container .tiptap p {
+  margin: 0;
+}
+
+.editor-container .tiptap h1 {
+  font-size: 1.6em;
+  font-weight: 700;
+  margin: 0.8em 0 0.4em;
+  color: #0f172a;
+  line-height: 1.3;
+}
+
+.editor-container .tiptap h2 {
+  font-size: 1.3em;
+  font-weight: 650;
+  margin: 0.7em 0 0.35em;
+  color: #0f172a;
+  line-height: 1.35;
+}
+
+.editor-container .tiptap h3 {
+  font-size: 1.1em;
+  font-weight: 600;
+  margin: 0.6em 0 0.3em;
+  color: #1e293b;
+  line-height: 1.4;
+}
+
+.editor-container .tiptap ul,
+.editor-container .tiptap ol {
+  padding-left: 1.4em;
+  margin: 0.3em 0;
+}
+
+.editor-container .tiptap li {
+  margin: 0.15em 0;
+}
+
+.editor-container .tiptap li p {
+  margin: 0;
+}
+
+.editor-container .tiptap blockquote {
+  border-left: 3px solid #a5b4fc;
+  padding-left: 14px;
+  margin: 0.5em 0;
+  color: #475569;
+}
+
+.editor-container .tiptap code {
+  background: #f1f5f9;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 0.9em;
+  font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+  color: #6366f1;
+}
+
+.editor-container .tiptap pre {
+  background: #1e293b;
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin: 0.5em 0;
+  overflow-x: auto;
+}
+
+.editor-container .tiptap pre code {
+  background: none;
+  padding: 0;
+  color: #e2e8f0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.editor-container .tiptap hr {
+  border: none;
+  border-top: 2px solid #e2e8f0;
+  margin: 1em 0;
+}
+
+.editor-container .tiptap strong {
+  font-weight: 650;
+}
+
+.editor-container .tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
   color: #94a3b8;
   font-style: italic;
+  pointer-events: none;
+  height: 0;
 }
 
 /* ── Status bar ── */
@@ -451,23 +598,23 @@ body {
 /* ── Scrollbar ── */
 
 .page-list::-webkit-scrollbar,
-.editor-textarea::-webkit-scrollbar {
+.editor-container .tiptap::-webkit-scrollbar {
   width: 5px;
 }
 
 .page-list::-webkit-scrollbar-track,
-.editor-textarea::-webkit-scrollbar-track {
+.editor-container .tiptap::-webkit-scrollbar-track {
   background: transparent;
 }
 
 .page-list::-webkit-scrollbar-thumb,
-.editor-textarea::-webkit-scrollbar-thumb {
+.editor-container .tiptap::-webkit-scrollbar-thumb {
   background: #cbd5e1;
   border-radius: 3px;
 }
 
 .page-list::-webkit-scrollbar-thumb:hover,
-.editor-textarea::-webkit-scrollbar-thumb:hover {
+.editor-container .tiptap::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
 
