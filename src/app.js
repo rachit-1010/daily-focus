@@ -342,10 +342,10 @@
   });
   const modalSubEstimate = document.getElementById('modal-subtask-estimate');
 
-  function openModal() {
+  function openModal(presetProject) {
     modalTitle.value = '';
     modalEstimate.value = '';
-    modalProject.value = '';
+    modalProject.value = presetProject || '';
     modalTodayState = activeView === 'today';
     updateModalTodayBtn();
     pendingSubtasks = [];
@@ -1055,8 +1055,17 @@
       count.className = 'project-group-count';
       count.textContent = incompleteCount;
 
+      const projAddBtn = document.createElement('button');
+      projAddBtn.className = 'project-group-action-btn';
+      projAddBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2v10M2 7h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+      projAddBtn.title = 'Add task to project';
+      projAddBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openModal(projectName);
+      });
+
       const projPageBtn = document.createElement('button');
-      projPageBtn.className = 'project-group-page-btn';
+      projPageBtn.className = 'project-group-action-btn';
       projPageBtn.innerHTML = pageSvg;
       projPageBtn.title = 'Project notes';
       projPageBtn.addEventListener('click', (e) => {
@@ -1068,6 +1077,7 @@
       header.appendChild(dot);
       header.appendChild(name);
       header.appendChild(count);
+      header.appendChild(projAddBtn);
       header.appendChild(projPageBtn);
 
       chevronBtn.addEventListener('click', (e) => {
@@ -1191,17 +1201,6 @@
         actions.appendChild(dot);
       }
 
-      // Timer display for in-progress task
-      if (isInProgress && !todo.completed) {
-        const timerEl = document.createElement('span');
-        timerEl.className = 'timer-display';
-        const elapsed = getElapsedSeconds(todo);
-        const { text, overTime } = formatTimer(elapsed, todo.estimatedMinutes);
-        timerEl.textContent = text;
-        if (overTime) timerEl.classList.add('over-time');
-        actions.appendChild(timerEl);
-      }
-
       // Estimate badge (when not in progress but has estimate)
       if (!isInProgress && todo.estimatedMinutes && !todo.completed) {
         const badge = document.createElement('span');
@@ -1243,14 +1242,26 @@
         actions.appendChild(focusBtn);
       }
 
-      // Delete button moved to detail section
-
       main.appendChild(grip);
       main.appendChild(expandBtn);
       main.appendChild(checkbox);
       main.appendChild(title);
       main.appendChild(actions);
       item.appendChild(main);
+
+      // Timer on a separate row below (only for in-progress task)
+      if (isInProgress && !todo.completed) {
+        const progressRow = document.createElement('div');
+        progressRow.className = 'todo-progress-row';
+        const timerEl = document.createElement('span');
+        timerEl.className = 'timer-display';
+        const elapsed = getElapsedSeconds(todo);
+        const { text, overTime } = formatTimer(elapsed, todo.estimatedMinutes);
+        timerEl.textContent = text;
+        if (overTime) timerEl.classList.add('over-time');
+        progressRow.appendChild(timerEl);
+        item.appendChild(progressRow);
+      }
 
       // ── Card progress bar (subtask completion) ──
       if (todo.subitems && todo.subitems.length > 0) {

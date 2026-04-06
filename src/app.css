@@ -609,6 +609,18 @@ body.mode-compact { background: transparent; }
 
 .todo-item.in-progress .todo-main {
   padding-left: 14px;
+  padding-bottom: 4px;
+}
+
+.todo-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 16px 12px 100px;
+}
+
+.todo-progress-row .timer-display {
+  margin-right: auto;
 }
 
 /* ── Drag Grip ── */
@@ -1206,10 +1218,10 @@ body.mode-compact { background: transparent; }
   font-size: 10px;
   color: #cbd5e1;
   font-weight: 500;
+  margin-right: auto;
 }
 
-.project-group-page-btn {
-  margin-left: auto;
+.project-group-action-btn {
   border: none;
   background: none;
   cursor: pointer;
@@ -1221,7 +1233,8 @@ body.mode-compact { background: transparent; }
   align-items: center;
 }
 
-.project-group-page-btn:hover {
+
+.project-group-action-btn:hover {
   color: #6366f1;
 }
 
