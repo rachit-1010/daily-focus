@@ -108,7 +108,7 @@
     import StarterKit from 'https://esm.sh/@tiptap/starter-kit@2';
     import Placeholder from 'https://esm.sh/@tiptap/extension-placeholder@2';
 
-  (function () {
+  (async function () {
     'use strict';
 
     const { invoke } = window.__TAURI__.core;
@@ -142,6 +142,8 @@
     const editorFormatBar = document.getElementById('editor-format-bar');
     const fmtToggleBtn = document.getElementById('fmt-toggle-btn');
     const editorStatus = document.getElementById('editor-status');
+
+    function reveal() { document.body.classList.add('ready'); }
 
     let fmtBarOpen = false;
     fmtToggleBtn.addEventListener('click', () => {
@@ -931,16 +933,24 @@
     const initialView = urlParams.get('view');
 
     if (initialPageId) {
-      // Hide list view immediately to avoid flash
       listView.classList.add('hidden');
       editorView.classList.remove('hidden');
-      // Load pages in background, then navigate to the target page
-      loadPages().then(async () => {
+
+      const isDeterministic = initialPageId.startsWith('daily_') || initialPageId.startsWith('project_');
+      if (isDeterministic) {
         const pageMeta = await resolvePageMeta(initialPageId);
-        openPage(pageMeta, initialView ? { view: initialView } : null);
-      });
+        await openPage(pageMeta, initialView ? { view: initialView } : null);
+        reveal();
+        loadPages();
+      } else {
+        await loadPages();
+        const pageMeta = await resolvePageMeta(initialPageId);
+        await openPage(pageMeta, initialView ? { view: initialView } : null);
+        reveal();
+      }
     } else {
-      loadPages();
+      await loadPages();
+      reveal();
     }
   })();
   </script>

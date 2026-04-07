@@ -14,7 +14,10 @@ body {
   display: flex;
   flex-direction: column;
   -webkit-font-smoothing: antialiased;
+  opacity: 0;
+  transition: opacity 0.15s ease;
 }
+body.ready { opacity: 1; }
 
 /* ── List View ── */
 
