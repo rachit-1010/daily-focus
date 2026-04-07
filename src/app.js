@@ -438,7 +438,7 @@
     render();
   }
 
-  addBtn.addEventListener('click', openModal);
+  addBtn.addEventListener('click', () => openModal());
   modalClose.addEventListener('click', closeModal);
   modalCancel.addEventListener('click', closeModal);
   modalSave.addEventListener('click', saveModal);
