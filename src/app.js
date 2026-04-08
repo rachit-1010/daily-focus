@@ -660,6 +660,7 @@
 
   function removeDropIndicators() {
     document.querySelectorAll('.drop-indicator, .sub-drop-indicator').forEach(el => el.remove());
+    document.querySelectorAll('.drop-before, .drop-after').forEach(el => el.classList.remove('drop-before', 'drop-after'));
   }
 
   function getInsertIndex(container, y, selector) {
@@ -719,17 +720,19 @@
       removeDropIndicators();
       if (type === 'todo') {
         const items = [...todoList.querySelectorAll('.todo-item:not(.dragging)')];
-        let inserted = false;
+        let target = null;
         for (const item of items) {
           const box = item.getBoundingClientRect();
+          if (box.height === 0) continue;
           if (ev.clientY < box.top + box.height / 2) {
-            todoList.insertBefore(placeholder, item);
-            inserted = true;
+            target = item;
             break;
           }
         }
-        if (!inserted) {
-          todoList.appendChild(placeholder);
+        if (target) {
+          target.classList.add('drop-before');
+        } else if (items.length > 0) {
+          items[items.length - 1].classList.add('drop-after');
         }
       } else if (type === 'subitem') {
         const subSection = sourceEl.closest('.subitems-section');
@@ -909,28 +912,21 @@
       ghost.style.top = (ev.clientY - offsetY) + 'px';
 
       removeDropIndicators();
+      // Find drop position among project group boundaries
       const headers = [...todoList.querySelectorAll('.project-group-header:not(.dragging)')];
-      let inserted = false;
+      let target = null;
       for (const h of headers) {
         const box = h.getBoundingClientRect();
+        if (box.height === 0) continue;
         if (ev.clientY < box.top + box.height / 2) {
-          todoList.insertBefore(placeholder, h);
-          inserted = true;
+          target = h;
           break;
         }
       }
-      if (!inserted && headers.length > 0) {
-        // After the last project group — find the end
-        const lastHeader = headers[headers.length - 1];
-        let afterEl = lastHeader;
-        while (afterEl.nextElementSibling && !afterEl.nextElementSibling.classList.contains('project-group-header')) {
-          afterEl = afterEl.nextElementSibling;
-        }
-        if (afterEl.nextElementSibling) {
-          todoList.insertBefore(placeholder, afterEl.nextElementSibling);
-        } else {
-          todoList.appendChild(placeholder);
-        }
+      if (target) {
+        target.classList.add('drop-before');
+      } else if (headers.length > 0) {
+        headers[headers.length - 1].classList.add('drop-after');
       }
     }
 

@@ -538,6 +538,11 @@ body.mode-compact { background: transparent; }
   flex-shrink: 0;
 }
 
+.todo-item.drop-before,
+.todo-item.drop-after {
+  overflow: visible;
+}
+
 .todo-item:hover {
   border-color: #d4d9e1;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
@@ -559,7 +564,8 @@ body.mode-compact { background: transparent; }
   border-color: #f0f2f5;
 }
 
-.todo-item.dragging {
+.todo-item.dragging,
+.project-group-header.dragging {
   display: none;
 }
 
@@ -653,10 +659,42 @@ body.mode-compact { background: transparent; }
 
 /* ── Drop Indicator ── */
 .drop-indicator {
-  height: 2px;
+  height: 3px;
+  min-height: 3px;
   background: #6366f1;
-  border-radius: 1px;
+  border-radius: 2px;
   margin: 2px 0;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+.drop-before,
+.drop-after {
+  position: relative;
+}
+
+.drop-before::before {
+  content: '';
+  position: absolute;
+  top: -5px;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: #6366f1;
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.drop-after::after {
+  content: '';
+  position: absolute;
+  bottom: -5px;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: #6366f1;
+  border-radius: 2px;
+  pointer-events: none;
 }
 
 .expand-btn {
