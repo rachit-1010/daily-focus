@@ -340,10 +340,10 @@
   function updateModalTodayBtn() {
     if (modalTodayState) {
       modalToday.className = 'today-toggle-btn is-today';
-      modalToday.innerHTML = '<span class="today-dot"></span> Planned for today';
+      modalToday.innerHTML = sunFilledSmSvg + ' Planned for today';
     } else {
       modalToday.className = 'today-toggle-btn';
-      modalToday.innerHTML = '+ Plan for today';
+      modalToday.innerHTML = sunOutlineSmSvg + ' Plan for today';
     }
   }
 
@@ -995,6 +995,10 @@
   const pageSvg = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M4 1h4l4 4v7a1 1 0 01-1 1H4a1 1 0 01-1-1V2a1 1 0 011-1z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" fill="none"/><path d="M8 1v4h4" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M5.5 8h3M5.5 10h2" stroke="currentColor" stroke-width="0.9" stroke-linecap="round"/></svg>';
   const gripDots = '<span></span><span></span><span></span><span></span><span></span><span></span>';
   const subGripDots = '<span></span><span></span><span></span><span></span>';
+  const sunOutlineSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
+  const sunFilledSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
+  const sunOutlineSmSvg = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
+  const sunFilledSmSvg = '<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
 
   // ── Project color helper ──
 
@@ -1252,14 +1256,6 @@
       const actions = document.createElement('div');
       actions.className = 'todo-actions';
 
-      // Today dot indicator (in All Tasks view)
-      if (activeView === 'all' && todo.isToday !== false) {
-        const dot = document.createElement('span');
-        dot.className = 'today-dot';
-        dot.title = 'Planned for today';
-        actions.appendChild(dot);
-      }
-
       // Estimate badge (when not in progress but has estimate)
       if (!isInProgress && todo.estimatedMinutes && !todo.completed) {
         const badge = document.createElement('span');
@@ -1268,14 +1264,29 @@
         actions.appendChild(badge);
       }
 
-      // Play/pause button
+      // Play/pause button (Today view) or Sun today-toggle button (All Tasks view)
       if (!todo.completed) {
-        const playBtn = document.createElement('button');
-        playBtn.className = 'action-btn play-btn' + (isInProgress ? ' active' : '');
-        playBtn.innerHTML = isInProgress ? pauseSvg : playSvg;
-        playBtn.title = isInProgress ? 'Stop focusing' : 'Focus on this';
-        playBtn.addEventListener('click', () => markInProgress(todo.id));
-        actions.appendChild(playBtn);
+        if (activeView === 'today') {
+          const playBtn = document.createElement('button');
+          playBtn.className = 'action-btn play-btn' + (isInProgress ? ' active' : '');
+          playBtn.innerHTML = isInProgress ? pauseSvg : playSvg;
+          playBtn.title = isInProgress ? 'Stop focusing' : 'Focus on this';
+          playBtn.addEventListener('click', () => markInProgress(todo.id));
+          actions.appendChild(playBtn);
+        } else {
+          const todayBtn = document.createElement('button');
+          const isTodayTask = todo.isToday !== false;
+          todayBtn.className = 'action-btn today-btn' + (isTodayTask ? ' is-today' : '');
+          todayBtn.innerHTML = isTodayTask ? sunFilledSvg : sunOutlineSvg;
+          todayBtn.title = isTodayTask ? 'Remove from today' : 'Plan for today';
+          todayBtn.addEventListener('click', async () => {
+            const newVal = !isTodayTask;
+            todo.isToday = newVal;
+            await invoke('set_today', { taskId: todo.id, isToday: newVal });
+            render();
+          });
+          actions.appendChild(todayBtn);
+        }
       }
 
       // Page button
@@ -1452,8 +1463,8 @@
         const isTodayTask = todo.isToday !== false;
         todayBtn.className = 'today-toggle-btn' + (isTodayTask ? ' is-today' : '');
         todayBtn.innerHTML = isTodayTask
-          ? '<span class="today-dot"></span> Planned for today'
-          : '+ Plan for today';
+          ? sunFilledSmSvg + ' Planned for today'
+          : sunOutlineSmSvg + ' Plan for today';
         todayBtn.addEventListener('click', async () => {
           const newVal = !isTodayTask;
           todo.isToday = newVal;

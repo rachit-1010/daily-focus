@@ -721,20 +721,23 @@ body.mode-compact { background: transparent; }
   gap: 4px;
 }
 
-/* Play button and estimate: slightly muted when not hovered */
+/* Play/today button and estimate: slightly muted when not hovered */
 .todo-actions .play-btn,
+.todo-actions .today-btn,
 .todo-actions .estimate-badge {
   opacity: 0.5;
   transition: opacity 0.15s;
 }
 
 .todo-main:hover .todo-actions .play-btn,
+.todo-main:hover .todo-actions .today-btn,
 .todo-main:hover .todo-actions .estimate-badge {
   opacity: 1;
 }
 
-/* Active play button is always fully opaque */
-.todo-actions .play-btn.active {
+/* Active play/today button is always fully opaque */
+.todo-actions .play-btn.active,
+.todo-actions .today-btn.is-today {
   opacity: 1;
 }
 
@@ -1296,15 +1299,23 @@ body.mode-compact { background: transparent; }
   margin: 10px 16px 6px;
 }
 
-/* ── Today Dot Indicator (All Tasks view) ── */
+/* ── Today Sun Button (All Tasks view) ── */
 
-.today-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #6366f1;
-  flex-shrink: 0;
-  margin-right: 2px;
+.action-btn.today-btn {
+  color: #6366f1;
+}
+
+.action-btn.today-btn:hover {
+  background: #eef2ff;
+}
+
+.action-btn.today-btn.is-today {
+  color: #6366f1;
+}
+
+.action-btn.today-btn.is-today:hover {
+  background: #eef2ff;
+  color: #4f46e5;
 }
 
 /* ── Detail Section: Project Field ── */
