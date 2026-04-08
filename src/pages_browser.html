@@ -303,7 +303,7 @@
         if (searchQuery) {
           emptyStateText.textContent = `No pages matching "${searchQuery}"`;
         } else if (activeFilter !== 'all') {
-          const labels = { task: 'task', daily: 'day', note: 'note' };
+          const labels = { task: 'task', daily: 'day', note: 'note', work: 'work' };
           emptyStateText.textContent = `No ${labels[activeFilter]} pages found.`;
         } else {
           emptyStateText.textContent = 'No pages yet. Create a note to get started.';
@@ -900,8 +900,13 @@
         return { id: taskId, title, pageType: 'daily' };
       }
       if (taskId.startsWith('project_')) {
-        const projectName = taskId.substring(8);
-        return { id: taskId, title: projectName, pageType: 'project' };
+        const projectId = taskId.substring(8);
+        try {
+          const projects = await invoke('get_projects');
+          const proj = projects.find(p => p.id === projectId);
+          if (proj) return { id: taskId, title: proj.name, pageType: 'project' };
+        } catch (e) { /* fallback below */ }
+        return { id: taskId, title: projectId, pageType: 'project' };
       }
       // Look up in loaded pages first
       const found = allPages.find(p => p.id === taskId);

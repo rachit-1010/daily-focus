@@ -3,6 +3,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager};
+use serde_json::Value;
 
 // ── macOS: overlay window over fullscreen apps ──
 
@@ -34,6 +35,16 @@ mod macos_overlay {
 
 // ── Data model ──
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+struct Project {
+    id: String,
+    name: String,
+    color: String,
+    #[serde(default)]
+    order: usize,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 struct AppData {
@@ -47,7 +58,7 @@ struct AppData {
     compact_mode: bool,
     window_position: Option<Position>,
     #[serde(default)]
-    projects: Vec<String>,
+    projects: Vec<Project>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -149,19 +160,150 @@ struct DataStore {
     data: Mutex<AppData>,
 }
 
+const PROJECT_COLORS: &[&str] = &[
+    "#6366f1", "#8b5cf6", "#ec4899", "#f59e0b", "#10b981", "#06b6d4", "#f43f5e", "#84cc16",
+];
+
+fn hash_color(name: &str) -> String {
+    let mut hash: i32 = 0;
+    for b in name.bytes() {
+        hash = ((hash << 5).wrapping_sub(hash)).wrapping_add(b as i32);
+    }
+    PROJECT_COLORS[(hash.unsigned_abs() as usize) % PROJECT_COLORS.len()].to_string()
+}
+
+fn generate_id(prefix: &str) -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::{SystemTime, UNIX_EPOCH};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
+    let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!("{}_{:x}_{:x}", prefix, ts, seq)
+}
+
 impl DataStore {
     fn new(path: PathBuf) -> Self {
-        let data = if path.exists() {
-            fs::read_to_string(&path)
-                .ok()
-                .and_then(|s| serde_json::from_str(&s).ok())
-                .unwrap_or_default()
+        if !path.exists() {
+            return Self { path, data: Mutex::new(AppData::default()) };
+        }
+
+        let raw = fs::read_to_string(&path).unwrap_or_default();
+
+        // Check if migration is needed by inspecting raw JSON
+        let needs_migration = if let Ok(val) = serde_json::from_str::<Value>(&raw) {
+            val.get("projects")
+                .and_then(|p| p.as_array())
+                .and_then(|arr| arr.first())
+                .map(|v| v.is_string())
+                .unwrap_or(false)
         } else {
-            AppData::default()
+            false
         };
-        Self {
-            path,
-            data: Mutex::new(data),
+
+        if needs_migration {
+            // Backup before migration
+            let data_dir = path.parent().unwrap();
+            let backup_dir = data_dir.join(format!("backup_{}", chrono::Local::now().format("%Y-%m-%d_%H%M%S")));
+            if !backup_dir.exists() {
+                let _ = fs::create_dir_all(&backup_dir);
+                let _ = fs::copy(&path, backup_dir.join("data.json"));
+                let meta_path = data_dir.join("pages_meta.json");
+                if meta_path.exists() {
+                    let _ = fs::copy(&meta_path, backup_dir.join("pages_meta.json"));
+                }
+                let pages_dir = data_dir.join("pages");
+                if pages_dir.exists() {
+                    let backup_pages = backup_dir.join("pages");
+                    let _ = fs::create_dir_all(&backup_pages);
+                    if let Ok(entries) = fs::read_dir(&pages_dir) {
+                        for entry in entries.flatten() {
+                            let _ = fs::copy(entry.path(), backup_pages.join(entry.file_name()));
+                        }
+                    }
+                }
+            }
+
+            // Parse old format using Value for flexible handling
+            let mut val: Value = serde_json::from_str(&raw).unwrap_or(Value::Object(Default::default()));
+
+            // Build project name → Project mapping
+            let old_names: Vec<String> = val.get("projects")
+                .and_then(|p| p.as_array())
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .unwrap_or_default();
+
+            let mut name_to_id: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+            let mut new_projects: Vec<Value> = Vec::new();
+            for (i, name) in old_names.iter().enumerate() {
+                let id = generate_id("proj");
+                name_to_id.insert(name.clone(), id.clone());
+                new_projects.push(serde_json::json!({
+                    "id": id,
+                    "name": name,
+                    "color": hash_color(name),
+                    "order": i
+                }));
+            }
+
+            // Replace projects array
+            val["projects"] = Value::Array(new_projects);
+
+            // Migrate todo.project fields: name → ID
+            for key in &["todos", "archivedTodos"] {
+                if let Some(todos) = val.get_mut(key).and_then(|v| v.as_array_mut()) {
+                    for todo in todos.iter_mut() {
+                        if let Some(proj_name) = todo.get("project").and_then(|v| v.as_str()).map(String::from) {
+                            if let Some(proj_id) = name_to_id.get(&proj_name) {
+                                todo["project"] = Value::String(proj_id.clone());
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Rename page files: project_{Name}.txt → project_{id}.txt
+            let pages_dir = path.parent().unwrap().join("pages");
+            if pages_dir.exists() {
+                for (name, id) in &name_to_id {
+                    let old_file = pages_dir.join(format!("project_{}.txt", name));
+                    let new_file = pages_dir.join(format!("project_{}.txt", id));
+                    if old_file.exists() {
+                        let _ = fs::rename(&old_file, &new_file);
+                    }
+                }
+            }
+
+            // Update pages_meta.json
+            let meta_path = path.parent().unwrap().join("pages_meta.json");
+            if meta_path.exists() {
+                if let Ok(meta_raw) = fs::read_to_string(&meta_path) {
+                    if let Ok(mut meta_arr) = serde_json::from_str::<Vec<Value>>(&meta_raw) {
+                        for entry in meta_arr.iter_mut() {
+                            if let Some(eid) = entry.get("id").and_then(|v| v.as_str()).map(String::from) {
+                                if eid.starts_with("project_") {
+                                    let old_name = &eid[8..];
+                                    if let Some(proj_id) = name_to_id.get(old_name) {
+                                        entry["id"] = Value::String(format!("project_{}", proj_id));
+                                        entry["title"] = Value::String(name_to_id.iter().find(|(_, v)| *v == proj_id).map(|(k, _)| k.clone()).unwrap_or_default());
+                                    }
+                                }
+                            }
+                        }
+                        if let Ok(json) = serde_json::to_string_pretty(&meta_arr) {
+                            let _ = fs::write(&meta_path, json);
+                        }
+                    }
+                }
+            }
+
+            // Parse migrated data into AppData
+            let data: AppData = serde_json::from_value(val).unwrap_or_default();
+            let store = Self { path, data: Mutex::new(data) };
+            store.save();
+            store
+        } else {
+            let data: AppData = serde_json::from_str(&raw).unwrap_or_default();
+            Self { path, data: Mutex::new(data) }
         }
     }
 
@@ -276,9 +418,7 @@ fn save_todos(
     {
         let mut data = store.data.lock().unwrap();
         data.todos = todos;
-        if current_task_id.is_some() {
-            data.current_task_id = current_task_id;
-        }
+        data.current_task_id = current_task_id;
         data.todos_date = Some(today_str());
     }
     store.save();
@@ -460,16 +600,97 @@ fn set_project(store: tauri::State<DataStore>, task_id: String, project: Option<
     {
         let mut data = store.data.lock().unwrap();
         if let Some(todo) = data.todos.iter_mut().find(|t| t.id == task_id) {
-            todo.project = project.clone();
-        }
-        // Add to known projects list if new
-        if let Some(ref p) = project {
-            if !p.is_empty() && !data.projects.contains(p) {
-                data.projects.push(p.clone());
-            }
+            todo.project = project;
         }
     }
     store.save();
+}
+
+#[tauri::command]
+fn create_project(store: tauri::State<DataStore>, name: String) -> Project {
+    let order = {
+        let data = store.data.lock().unwrap();
+        data.projects.len()
+    };
+    let color_idx = order % PROJECT_COLORS.len();
+    let project = Project {
+        id: generate_id("proj"),
+        name,
+        color: PROJECT_COLORS[color_idx].to_string(),
+        order,
+    };
+    {
+        let mut data = store.data.lock().unwrap();
+        data.projects.push(project.clone());
+    }
+    store.save();
+    project
+}
+
+#[tauri::command]
+fn rename_project(store: tauri::State<DataStore>, project_id: String, new_name: String) {
+    {
+        let mut data = store.data.lock().unwrap();
+        if let Some(proj) = data.projects.iter_mut().find(|p| p.id == project_id) {
+            proj.name = new_name;
+        }
+    }
+    store.save();
+}
+
+#[tauri::command]
+fn delete_project(store: tauri::State<DataStore>, page_meta_store: tauri::State<PageMetaStore>, project_id: String) {
+    {
+        let mut data = store.data.lock().unwrap();
+        // Unassign tasks from this project
+        for todo in data.todos.iter_mut() {
+            if todo.project.as_deref() == Some(&project_id) {
+                todo.project = None;
+            }
+        }
+        for todo in data.archived_todos.iter_mut() {
+            if todo.project.as_deref() == Some(&project_id) {
+                todo.project = None;
+            }
+        }
+        data.projects.retain(|p| p.id != project_id);
+        // Re-index order
+        for (i, p) in data.projects.iter_mut().enumerate() {
+            p.order = i;
+        }
+    }
+    // Delete project page file and metadata
+    let page_id = format!("project_{}", project_id);
+    let pages_dir = store.path.parent().unwrap().join("pages");
+    let page_file = pages_dir.join(format!("{}.txt", page_id));
+    if page_file.exists() {
+        let _ = fs::remove_file(page_file);
+    }
+    {
+        let mut meta = page_meta_store.data.lock().unwrap();
+        meta.retain(|m| m.id != page_id);
+    }
+    page_meta_store.save();
+    store.save();
+}
+
+#[tauri::command]
+fn reorder_projects(store: tauri::State<DataStore>, project_ids: Vec<String>) {
+    {
+        let mut data = store.data.lock().unwrap();
+        for (i, id) in project_ids.iter().enumerate() {
+            if let Some(proj) = data.projects.iter_mut().find(|p| p.id == *id) {
+                proj.order = i;
+            }
+        }
+        data.projects.sort_by_key(|p| p.order);
+    }
+    store.save();
+}
+
+#[tauri::command]
+fn get_projects(store: tauri::State<DataStore>) -> Vec<Project> {
+    store.data.lock().unwrap().projects.clone()
 }
 
 #[tauri::command]
@@ -610,7 +831,12 @@ fn save_page(
         }
         PageType::Daily => format_daily_title(&task_id),
         PageType::Project => {
-            task_id.strip_prefix("project_").unwrap_or(&task_id).to_string()
+            let proj_id = task_id.strip_prefix("project_").unwrap_or(&task_id);
+            let data = store.data.lock().unwrap();
+            data.projects.iter()
+                .find(|p| p.id == proj_id)
+                .map(|p| p.name.clone())
+                .unwrap_or_else(|| proj_id.to_string())
         }
         PageType::Note => {
             // For notes, preserve existing title
@@ -692,7 +918,13 @@ fn list_all_pages(
                     .map(|t| t.title.clone())
                     .unwrap_or_else(|| file_id.clone()),
                 PageType::Daily => format_daily_title(file_id),
-                PageType::Project => file_id.strip_prefix("project_").unwrap_or(file_id).to_string(),
+                PageType::Project => {
+                    let proj_id = file_id.strip_prefix("project_").unwrap_or(file_id);
+                    app_data.projects.iter()
+                        .find(|p| p.id == proj_id)
+                        .map(|p| p.name.clone())
+                        .unwrap_or_else(|| proj_id.to_string())
+                }
                 PageType::Note => "Untitled".to_string(),
             };
 
@@ -1028,12 +1260,12 @@ fn load_timeline(store: tauri::State<DataStore>, task_id: String) -> Vec<Timelin
         bouts
     } else if task_id.starts_with("project_") {
         // Project page: aggregate bouts from all tasks in this project
-        let project_name = &task_id[8..];
+        let project_id = &task_id[8..];
         let mut bouts = Vec::new();
         let mut color_idx: u8 = 0;
 
         for todo in &all_todos {
-            if todo.project.as_deref() != Some(project_name) || todo.time_logs.is_empty() {
+            if todo.project.as_deref() != Some(project_id) || todo.time_logs.is_empty() {
                 continue;
             }
             let raw = compute_bouts_from_logs(todo, &todo.title, color_idx);
@@ -1113,6 +1345,11 @@ pub fn run() {
             reorder_todos,
             reorder_subitems,
             set_project,
+            create_project,
+            rename_project,
+            delete_project,
+            reorder_projects,
+            get_projects,
             set_today,
             open_page_window,
             close_page_window,

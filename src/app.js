@@ -130,12 +130,28 @@
   let timerInterval = null;
   let dragState = null; // pointer-based drag state
   let activeView = 'today'; // 'today' or 'all'
-  let collapsedProjects = new Set();
-  let knownProjects = [];
-  let currentProjectOrder = []; // tracks project display order for drag
+  let collapsedProjects = new Set(); // Set of project IDs
+  let knownProjects = []; // Array of {id, name, color, order} objects
+  let currentProjectOrder = []; // tracks project IDs for drag
 
-  function syncProjects() {
-    knownProjects = [...new Set(todos.map(t => t.project).filter(Boolean))];
+  function syncFromData(data) {
+    todos = data.todos || [];
+    currentTaskId = data.currentTaskId || null;
+    knownProjects = (data.projects || []).sort((a, b) => a.order - b.order);
+  }
+
+  function getProjectById(id) {
+    return knownProjects.find(p => p.id === id);
+  }
+
+  function getProjectColor(id) {
+    const proj = getProjectById(id);
+    return proj ? proj.color : '#94a3b8';
+  }
+
+  function getProjectName(id) {
+    const proj = getProjectById(id);
+    return proj ? proj.name : '';
   }
 
   // ── DOM refs (full mode) ──
@@ -178,10 +194,8 @@
 
   async function init() {
     const data = await invoke('load_data');
-    todos = data.todos || [];
-    currentTaskId = data.currentTaskId || null;
+    syncFromData(data);
     isCompactMode = data.compactMode || false;
-    knownProjects = data.projects || [];
 
     if (data.todosDate && data.todosDate !== todayStr() && todos.length > 0) {
       // Auto-archive completed tasks and keep pending ones
@@ -192,9 +206,7 @@
       }
       await invoke('archive_todos', { mode: 'keep' });
       const refreshed = await invoke('load_data');
-      todos = refreshed.todos;
-      currentTaskId = refreshed.currentTaskId;
-      knownProjects = refreshed.projects || [];
+      syncFromData(refreshed);
     }
 
     applyMode(isCompactMode);
@@ -240,8 +252,7 @@
       await invoke('close_page_window', { taskId: currentTaskId });
       await invoke('set_in_progress', { todoId: null });
       const data = await invoke('load_data');
-      todos = data.todos;
-      currentTaskId = data.currentTaskId;
+      syncFromData(data);
     }
     await toggleMode(false);
   });
@@ -342,10 +353,15 @@
   });
   const modalSubEstimate = document.getElementById('modal-subtask-estimate');
 
-  function openModal(presetProject) {
+  function openModal(presetProjectId) {
     modalTitle.value = '';
     modalEstimate.value = '';
-    modalProject.value = presetProject || '';
+    if (presetProjectId) {
+      const proj = getProjectById(presetProjectId);
+      modalProject.value = proj ? proj.name : '';
+    } else {
+      modalProject.value = '';
+    }
     modalTodayState = activeView === 'today';
     updateModalTodayBtn();
     pendingSubtasks = [];
@@ -404,7 +420,21 @@
     if (!title) { modalTitle.focus(); return; }
 
     const estimatedMinutes = parseTimeInput(modalEstimate.value);
-    const project = modalProject.value.trim() || null;
+    const projectInput = modalProject.value.trim() || null;
+
+    // Resolve project: input may be an ID (from preset/autocomplete) or a new name
+    let projectId = null;
+    if (projectInput) {
+      const existing = knownProjects.find(p => p.id === projectInput || p.name === projectInput);
+      if (existing) {
+        projectId = existing.id;
+      } else {
+        // Create new project
+        const newProj = await invoke('create_project', { name: projectInput });
+        knownProjects.push(newProj);
+        projectId = newProj.id;
+      }
+    }
 
     const subitems = pendingSubtasks.map((s, i) => ({
       id: generateId('sub'),
@@ -425,15 +455,13 @@
       estimatedMinutes: (estimatedMinutes && estimatedMinutes > 0) ? estimatedMinutes : null,
       elapsedSeconds: 0,
       timerStartedAt: null,
-      project,
+      project: projectId,
       isToday: modalTodayState,
     });
     todos.forEach((t, i) => { t.order = i; });
 
-    if (project && !knownProjects.includes(project)) knownProjects.push(project);
-
     await invoke('save_todos', { todos, currentTaskId });
-    if (project) await invoke('set_project', { taskId: todos[0].id, project });
+    if (projectId) await invoke('set_project', { taskId: todos[0].id, project: projectId });
     closeModal();
     render();
   }
@@ -457,18 +485,18 @@
   let modalAcDropdown = null;
   function showModalProjectAc() {
     const val = modalProject.value.trim().toLowerCase();
-    const matches = knownProjects.filter(p => p.toLowerCase().includes(val));
+    const matches = knownProjects.filter(p => p.name.toLowerCase().includes(val));
     if (modalAcDropdown) modalAcDropdown.remove();
     if (matches.length === 0) return;
     modalAcDropdown = document.createElement('div');
     modalAcDropdown.className = 'project-autocomplete';
-    matches.forEach(m => {
+    matches.forEach(proj => {
       const item = document.createElement('div');
       item.className = 'project-autocomplete-item';
-      item.textContent = m;
+      item.textContent = proj.name;
       item.addEventListener('mousedown', (e) => {
         e.preventDefault();
-        modalProject.value = m;
+        modalProject.value = proj.name;
         if (modalAcDropdown) { modalAcDropdown.remove(); modalAcDropdown = null; }
       });
       modalAcDropdown.appendChild(item);
@@ -494,8 +522,7 @@
       await invoke('close_page_window', { taskId: todoId });
       await invoke('complete_task', { taskId: todoId });
       const data = await invoke('load_data');
-      todos = data.todos;
-      currentTaskId = data.currentTaskId;
+      syncFromData(data);
       render();
       return;
     }
@@ -519,8 +546,7 @@
       currentTaskId = null;
       await invoke('set_in_progress', { todoId: null });
       const data = await invoke('load_data');
-      todos = data.todos;
-      currentTaskId = data.currentTaskId;
+      syncFromData(data);
       render();
     } else {
       // Switch to new task — close old page, open new page
@@ -534,8 +560,7 @@
       currentTaskId = todoId;
       await invoke('set_in_progress', { todoId });
       const data = await invoke('load_data');
-      todos = data.todos;
-      currentTaskId = data.currentTaskId;
+      syncFromData(data);
       // Auto-open page for the new task
       await invoke('open_page_window', { taskId: todoId });
       // Auto-switch to compact view
@@ -556,7 +581,6 @@
 
     todos.splice(idx, 1);
     expandedIds.delete(todoId);
-    syncProjects();
     await invoke('save_todos', { todos, currentTaskId });
     render();
   }
@@ -759,28 +783,24 @@
       removeDropIndicators();
 
       if (type === 'todo') {
-        // Figure out new position among non-completed tasks
-        const items = [...todoList.querySelectorAll('.todo-item:not(.dragging)')];
+        // Read the order from the DOM, excluding the dragged item
+        const allItems = [...todoList.querySelectorAll('.todo-item:not(.dragging)')];
+        const newOrder = allItems.map(el => el.getAttribute('data-todo-id')).filter(tid => tid !== id);
+
+        // Insert the dragged item at the placeholder position
         const { index } = getInsertIndex(todoList, ev.clientY, '.todo-item:not(.dragging)');
+        const clampedIdx = Math.min(index, newOrder.length);
+        newOrder.splice(clampedIdx, 0, id);
 
-        // Get the visible order (excluding the dragged item)
-        const sortedTodos = [...todos].sort((a, b) => {
-          if (a.completed === b.completed) return 0;
-          return a.completed ? 1 : -1;
-        });
-        const visibleIds = sortedTodos.filter(t => t.id !== id).map(t => t.id);
-        const clampedIdx = Math.min(index, visibleIds.length);
-        visibleIds.splice(clampedIdx, 0, id);
-
-        // Now rebuild the todos array in this new visual order
+        // Rebuild todos array: items in new DOM order, then any not in view
         const reordered = [];
-        visibleIds.forEach((tid, idx) => {
+        const placed = new Set();
+        newOrder.forEach(tid => {
           const todo = todos.find(t => t.id === tid);
-          if (todo) {
-            todo.order = idx;
-            reordered.push(todo);
-          }
+          if (todo) { reordered.push(todo); placed.add(tid); }
         });
+        todos.forEach(t => { if (!placed.has(t.id)) reordered.push(t); });
+        reordered.forEach((t, i) => { t.order = i; });
         todos = reordered;
 
         await invoke('reorder_todos', { todoIds: todos.map(t => t.id) });
@@ -842,7 +862,7 @@
 
   // ── Project group drag ──
 
-  function initProjectDrag(e, headerEl, projectName) {
+  function initProjectDrag(e, headerEl, projectId) {
     e.preventDefault();
     e.stopPropagation();
 
@@ -927,22 +947,35 @@
       const { index } = getInsertIndex(todoList, ev.clientY, '.project-group-header');
 
       // Get current project order (excluding dragged)
-      const otherProjects = currentProjectOrder.filter(p => p !== projectName);
+      const otherProjects = currentProjectOrder.filter(p => p !== projectId);
       const clampedIdx = Math.min(index, otherProjects.length);
-      otherProjects.splice(clampedIdx, 0, projectName);
+      otherProjects.splice(clampedIdx, 0, projectId);
 
-      // Reorder todos: project groups in new order, then ungrouped
+      // Reorder todos: visible project groups in new order, then invisible projects, then ungrouped
+      const allProjectIds = knownProjects.map(p => p.id);
+      const invisibleProjects = allProjectIds.filter(id => !otherProjects.includes(id));
+      const fullOrder = [...otherProjects, ...invisibleProjects];
+
       const reordered = [];
-      for (const proj of otherProjects) {
+      const placed = new Set();
+      for (const proj of fullOrder) {
         const projTodos = todos.filter(t => t.project === proj);
+        projTodos.forEach(t => placed.add(t.id));
         reordered.push(...projTodos);
       }
-      const ungroupedTodos = todos.filter(t => !t.project);
-      reordered.push(...ungroupedTodos);
+      // Catch any remaining tasks (ungrouped + orphaned project refs)
+      const remaining = todos.filter(t => !placed.has(t.id));
+      reordered.push(...remaining);
       reordered.forEach((t, i) => { t.order = i; });
       todos = reordered;
 
       await invoke('reorder_todos', { todoIds: todos.map(t => t.id) });
+      await invoke('reorder_projects', { projectIds: fullOrder });
+      // Update local knownProjects to reflect new order
+      knownProjects = fullOrder.map((id, i) => {
+        const p = getProjectById(id);
+        return p ? { ...p, order: i } : null;
+      }).filter(Boolean);
       render();
     }
 
@@ -965,14 +998,7 @@
 
   // ── Project color helper ──
 
-  const projectColors = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#06b6d4', '#f43f5e', '#84cc16'];
-
-  function getProjectColor(name) {
-    if (!name) return '#94a3b8';
-    let hash = 0;
-    for (let i = 0; i < name.length; i++) hash = ((hash << 5) - hash + name.charCodeAt(i)) | 0;
-    return projectColors[Math.abs(hash) % projectColors.length];
-  }
+  // Project colors are now stored on Project objects — see getProjectColor() helper above
 
   // ══════════════════════════════════════════
   //  RENDER (FULL MODE)
@@ -1008,11 +1034,17 @@
       return a.completed ? 1 : -1;
     });
 
-    // Group by project
+    // Group by project ID
     const ungrouped = sortedTodos.filter(t => !t.project);
     const projectMap = new Map();
+    // Use knownProjects order for display
+    for (const proj of knownProjects) {
+      const projTodos = sortedTodos.filter(t => t.project === proj.id);
+      if (projTodos.length > 0) projectMap.set(proj.id, projTodos);
+    }
+    // Also catch tasks with unknown project IDs
     for (const t of sortedTodos) {
-      if (t.project) {
+      if (t.project && !projectMap.has(t.project)) {
         if (!projectMap.has(t.project)) projectMap.set(t.project, []);
         projectMap.get(t.project).push(t);
       }
@@ -1020,20 +1052,22 @@
     currentProjectOrder = [...projectMap.keys()];
 
     // Render project groups first, then ungrouped tasks
-    for (const [projectName, projectTodos] of projectMap) {
-      const isCollapsed = collapsedProjects.has(projectName);
-      const color = getProjectColor(projectName);
+    for (const [projectId, projectTodos] of projectMap) {
+      const proj = getProjectById(projectId);
+      const projectName = proj ? proj.name : projectId;
+      const color = proj ? proj.color : '#94a3b8';
+      const isCollapsed = collapsedProjects.has(projectId);
       const incompleteCount = projectTodos.filter(t => !t.completed).length;
 
       const header = document.createElement('div');
       header.className = 'project-group-header' + (isCollapsed ? ' collapsed' : '');
-      header.setAttribute('data-project', projectName);
+      header.setAttribute('data-project', projectId);
 
       const headerGrip = document.createElement('div');
       headerGrip.className = 'project-group-grip';
       headerGrip.innerHTML = subGripDots;
       headerGrip.addEventListener('pointerdown', (e) => {
-        initProjectDrag(e, header, projectName);
+        initProjectDrag(e, header, projectId);
       });
 
       header.innerHTML = '';
@@ -1047,9 +1081,34 @@
       dot.className = 'project-group-dot';
       dot.style.background = color;
 
-      const name = document.createElement('span');
-      name.className = 'project-group-name';
-      name.textContent = projectName;
+      const nameEl = document.createElement('span');
+      nameEl.className = 'project-group-name';
+      nameEl.textContent = projectName;
+
+      // Rename on double-click
+      nameEl.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'project-group-name-edit';
+        input.value = projectName;
+        nameEl.replaceWith(input);
+        input.focus();
+        input.select();
+        const commit = async () => {
+          const newName = input.value.trim();
+          if (newName && newName !== projectName && proj) {
+            proj.name = newName;
+            await invoke('rename_project', { projectId, newName });
+          }
+          render();
+        };
+        input.addEventListener('blur', commit);
+        input.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Enter') { ev.preventDefault(); input.blur(); }
+          if (ev.key === 'Escape') { input.value = projectName; input.blur(); }
+        });
+      });
 
       const count = document.createElement('span');
       count.className = 'project-group-count';
@@ -1061,7 +1120,7 @@
       projAddBtn.title = 'Add task to project';
       projAddBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        openModal(projectName);
+        openModal(projectId);
       });
 
       const projPageBtn = document.createElement('button');
@@ -1070,20 +1129,20 @@
       projPageBtn.title = 'Project notes';
       projPageBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        invoke('open_page_window', { taskId: 'project_' + projectName });
+        invoke('open_page_window', { taskId: 'project_' + projectId });
       });
 
       header.appendChild(chevronBtn);
       header.appendChild(dot);
-      header.appendChild(name);
+      header.appendChild(nameEl);
       header.appendChild(count);
       header.appendChild(projAddBtn);
       header.appendChild(projPageBtn);
 
       chevronBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (collapsedProjects.has(projectName)) collapsedProjects.delete(projectName);
-        else collapsedProjects.add(projectName);
+        if (collapsedProjects.has(projectId)) collapsedProjects.delete(projectId);
+        else collapsedProjects.add(projectId);
         render();
       });
       todoList.appendChild(header);
@@ -1323,27 +1382,26 @@
         projInput.type = 'text';
         projInput.className = 'project-input';
         projInput.placeholder = 'No project';
-        projInput.value = todo.project || '';
+        projInput.value = getProjectName(todo.project) || '';
 
         let acDropdown = null;
 
         const showAutocomplete = () => {
           const val = projInput.value.trim().toLowerCase();
-          const matches = knownProjects.filter(p => p.toLowerCase().includes(val) && p !== todo.project);
+          const matches = knownProjects.filter(p => p.name.toLowerCase().includes(val) && p.id !== todo.project);
           if (acDropdown) acDropdown.remove();
           if (matches.length === 0) return;
           acDropdown = document.createElement('div');
           acDropdown.className = 'project-autocomplete';
-          matches.forEach(m => {
+          matches.forEach(proj => {
             const item = document.createElement('div');
             item.className = 'project-autocomplete-item';
-            item.textContent = m;
+            item.textContent = proj.name;
             item.addEventListener('mousedown', async (e) => {
               e.preventDefault();
-              projInput.value = m;
-              todo.project = m;
-              await invoke('set_project', { taskId: todo.id, project: m });
-              syncProjects();
+              projInput.value = proj.name;
+              todo.project = proj.id;
+              await invoke('set_project', { taskId: todo.id, project: proj.id });
               if (acDropdown) acDropdown.remove();
               acDropdown = null;
               render();
@@ -1358,10 +1416,24 @@
         projInput.addEventListener('blur', async () => {
           setTimeout(() => { if (acDropdown) { acDropdown.remove(); acDropdown = null; } }, 150);
           const val = projInput.value.trim() || null;
-          if (val !== (todo.project || null)) {
-            todo.project = val;
-            await invoke('set_project', { taskId: todo.id, project: val });
-            syncProjects();
+          const currentName = getProjectName(todo.project) || null;
+          if (val !== currentName) {
+            if (!val) {
+              todo.project = null;
+              await invoke('set_project', { taskId: todo.id, project: null });
+            } else {
+              // Find existing by name or create new
+              const existing = knownProjects.find(p => p.name === val);
+              if (existing) {
+                todo.project = existing.id;
+                await invoke('set_project', { taskId: todo.id, project: existing.id });
+              } else {
+                const newProj = await invoke('create_project', { name: val });
+                knownProjects.push(newProj);
+                todo.project = newProj.id;
+                await invoke('set_project', { taskId: todo.id, project: newProj.id });
+              }
+            }
             render();
           }
         });
@@ -1688,8 +1760,7 @@
       await invoke('close_page_window', { taskId: currentTaskId });
       await invoke('complete_task', { taskId: currentTaskId });
       const data = await invoke('load_data');
-      todos = data.todos;
-      currentTaskId = data.currentTaskId;
+      syncFromData(data);
       // Switch back to full mode after completing a task in compact view
       await toggleMode(false);
     }
