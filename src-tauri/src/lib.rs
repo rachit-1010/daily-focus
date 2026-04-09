@@ -31,6 +31,59 @@ mod macos_overlay {
             std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
         send(ns_win, sel, behavior);
     }
+
+    // NSWindowStyleMask constants
+    const TITLED: u64 = 1 << 0;
+    const CLOSABLE: u64 = 1 << 1;
+    const MINIATURIZABLE: u64 = 1 << 2;
+    const RESIZABLE: u64 = 1 << 3;
+    const FULL_SIZE_CONTENT_VIEW: u64 = 1 << 15;
+
+    fn set_style_mask(ns_win: *mut c_void, mask: u64) {
+        unsafe {
+            let sel =
+                sel_registerName(b"setStyleMask:\0".as_ptr() as *const std::os::raw::c_char);
+            let send: unsafe extern "C" fn(*mut c_void, *mut c_void, u64) =
+                std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+            send(ns_win, sel, mask);
+        }
+    }
+
+    fn set_titlebar_transparent(ns_win: *mut c_void, transparent: bool) {
+        unsafe {
+            let sel = sel_registerName(
+                b"setTitlebarAppearsTransparent:\0".as_ptr() as *const std::os::raw::c_char,
+            );
+            let send: unsafe extern "C" fn(*mut c_void, *mut c_void, bool) =
+                std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+            send(ns_win, sel, transparent);
+        }
+    }
+
+    fn set_title_visibility(ns_win: *mut c_void, visibility: i64) {
+        unsafe {
+            let sel =
+                sel_registerName(b"setTitleVisibility:\0".as_ptr() as *const std::os::raw::c_char);
+            let send: unsafe extern "C" fn(*mut c_void, *mut c_void, i64) =
+                std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+            send(ns_win, sel, visibility);
+        }
+    }
+
+    /// Remove titlebar for compact mode (borderless window).
+    pub fn set_compact_decorations(ns_win: *mut c_void) {
+        set_style_mask(ns_win, FULL_SIZE_CONTENT_VIEW);
+    }
+
+    /// Restore overlay titlebar style for full mode.
+    pub fn set_full_decorations(ns_win: *mut c_void) {
+        set_style_mask(
+            ns_win,
+            TITLED | CLOSABLE | MINIATURIZABLE | RESIZABLE | FULL_SIZE_CONTENT_VIEW,
+        );
+        set_titlebar_transparent(ns_win, true);
+        set_title_visibility(ns_win, 1); // NSWindowTitleHidden
+    }
 }
 
 // ── Data model ──
@@ -552,20 +605,24 @@ fn toggle_compact_mode(store: tauri::State<DataStore>, app: AppHandle, compact: 
             let _ = win.set_size(tauri::Size::Logical(tauri::LogicalSize::new(340.0, 200.0)));
             let _ = win.set_always_on_top(true);
             let _ = win.set_resizable(false);
-            let _ = win.set_decorations(false);
             #[cfg(target_os = "macos")]
             if let Ok(ns_win) = win.ns_window() {
+                macos_overlay::set_compact_decorations(ns_win);
                 unsafe { macos_overlay::set_overlay(ns_win, true); }
             }
+            #[cfg(not(target_os = "macos"))]
+            let _ = win.set_decorations(false);
         } else {
             #[cfg(target_os = "macos")]
             if let Ok(ns_win) = win.ns_window() {
                 unsafe { macos_overlay::set_overlay(ns_win, false); }
+                macos_overlay::set_full_decorations(ns_win);
             }
+            #[cfg(not(target_os = "macos"))]
+            let _ = win.set_decorations(true);
             let _ = win.set_size(tauri::Size::Logical(tauri::LogicalSize::new(400.0, 560.0)));
             let _ = win.set_always_on_top(false);
             let _ = win.set_resizable(true);
-            let _ = win.set_decorations(true);
         }
     }
 }
