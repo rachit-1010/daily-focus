@@ -131,6 +131,7 @@
   let dragState = null; // pointer-based drag state
   let activeView = 'today'; // 'today' or 'all'
   let collapsedProjects = new Set(); // Set of project IDs
+  let userExpandedDoneProjects = new Set(); // Projects the user manually expanded while all-done
   let knownProjects = []; // Array of {id, name, color, order} objects
   let currentProjectOrder = []; // tracks project IDs for drag
 
@@ -1056,8 +1057,18 @@
       const proj = getProjectById(projectId);
       const projectName = proj ? proj.name : projectId;
       const color = proj ? proj.color : '#94a3b8';
-      const isCollapsed = collapsedProjects.has(projectId);
       const incompleteCount = projectTodos.filter(t => !t.completed).length;
+
+      // Auto-collapse in Today view when all tasks are done
+      if (activeView === 'today' && incompleteCount === 0 && !userExpandedDoneProjects.has(projectId)) {
+        collapsedProjects.add(projectId);
+      }
+      // Reset override when project has incomplete tasks again
+      if (incompleteCount > 0) {
+        userExpandedDoneProjects.delete(projectId);
+      }
+
+      const isCollapsed = collapsedProjects.has(projectId);
 
       const header = document.createElement('div');
       header.className = 'project-group-header' + (isCollapsed ? ' collapsed' : '');
@@ -1141,8 +1152,14 @@
 
       chevronBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (collapsedProjects.has(projectId)) collapsedProjects.delete(projectId);
-        else collapsedProjects.add(projectId);
+        if (collapsedProjects.has(projectId)) {
+          collapsedProjects.delete(projectId);
+          // Track that user manually expanded an all-done project
+          if (incompleteCount === 0) userExpandedDoneProjects.add(projectId);
+        } else {
+          collapsedProjects.add(projectId);
+          userExpandedDoneProjects.delete(projectId);
+        }
         render();
       });
       todoList.appendChild(header);
