@@ -4,15 +4,27 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="pages_browser.css">
-  <title>All Pages</title>
+  <title>Browse</title>
 </head>
 <body>
 
   <!-- ── List View ── -->
   <div class="list-view" id="list-view">
     <div class="browser-toolbar">
-      <div class="browser-title-row">
-        <span class="browser-title">All Pages</span>
+      <div class="search-wrap">
+        <svg class="search-icon" width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <circle cx="6" cy="6" r="4.5" stroke="currentColor" stroke-width="1.3"/>
+          <path d="M9.5 9.5L12.5 12.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+        </svg>
+        <input type="text" class="search-input" id="search-input" placeholder="Search..." autocomplete="off">
+      </div>
+
+      <div class="filter-tabs-row">
+        <div class="filter-tabs" id="filter-tabs">
+          <button class="filter-tab active" data-tab="work">Work <span class="tab-badge hidden" id="badge-work">0</span></button>
+          <button class="filter-tab" data-tab="days">Days <span class="tab-badge hidden" id="badge-days">0</span></button>
+          <button class="filter-tab" data-tab="notes">Notes <span class="tab-badge hidden" id="badge-notes">0</span></button>
+        </div>
         <button class="new-note-btn" id="new-note-btn">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
             <path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
@@ -20,32 +32,25 @@
           New Note
         </button>
       </div>
+    </div>
 
-      <div class="search-wrap">
-        <svg class="search-icon" width="14" height="14" viewBox="0 0 14 14" fill="none">
-          <circle cx="6" cy="6" r="4.5" stroke="currentColor" stroke-width="1.3"/>
-          <path d="M9.5 9.5L12.5 12.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-        </svg>
-        <input type="text" class="search-input" id="search-input" placeholder="Search pages..." autocomplete="off">
-      </div>
-
-      <div class="filter-tabs" id="filter-tabs">
-        <button class="filter-tab active" data-filter="all">All</button>
-        <button class="filter-tab" data-filter="work">Work</button>
-        <button class="filter-tab" data-filter="daily">Days</button>
-        <button class="filter-tab" data-filter="note">Notes</button>
+    <!-- Tab content containers -->
+    <div class="tab-content" id="tab-work">
+      <div class="work-tree" id="work-tree"></div>
+      <div class="empty-state" id="work-empty" style="display:none">
+        <p>No tasks yet.</p>
       </div>
     </div>
 
-    <div class="page-list" id="page-list"></div>
+    <div class="tab-content" id="tab-days" style="display:none">
+      <div class="calendar-view" id="calendar-view"></div>
+    </div>
 
-    <div class="empty-state" id="empty-state" style="display:none">
-      <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-        <rect x="10" y="8" width="22" height="30" rx="3" stroke="#e2e8f0" stroke-width="2" fill="none"/>
-        <path d="M16 18h10M16 23h7" stroke="#cbd5e1" stroke-width="1.5" stroke-linecap="round"/>
-        <rect x="16" y="12" width="18" height="26" rx="3" stroke="#e2e8f0" stroke-width="2" fill="none"/>
-      </svg>
-      <p id="empty-state-text">No pages yet. Create a note to get started.</p>
+    <div class="tab-content" id="tab-notes" style="display:none">
+      <div class="notes-list" id="notes-list"></div>
+      <div class="empty-state" id="notes-empty" style="display:none">
+        <p>No notes yet. Create one to get started.</p>
+      </div>
     </div>
   </div>
 
@@ -117,20 +122,31 @@
     // ── State ──
 
     let allPages = [];
-    let activeFilter = 'all';
+    let activeTab = 'work';
     let searchQuery = '';
     let searchTimer = null;
     let currentPageId = null;
     let currentPageMeta = null;
     let saveTimer = null;
 
+    // Work tree state
+    let allTasksData = { projects: [], tasks: [] };
+    let expandedProjects = new Set();
+    let expandedArchived = new Set(); // tracks which project/section has archived expanded
+
+    // Calendar state
+    const now = new Date();
+    let calendarYear = now.getFullYear();
+    let calendarMonth = now.getMonth() + 1; // 1-indexed
+    let monthTimeData = {};
+
+    // Search state for calendar highlighting
+    let searchMatchedDailyIds = new Set();
+
     // ── DOM refs ──
 
     const listView = document.getElementById('list-view');
     const editorView = document.getElementById('editor-view');
-    const pageList = document.getElementById('page-list');
-    const emptyState = document.getElementById('empty-state');
-    const emptyStateText = document.getElementById('empty-state-text');
     const searchInput = document.getElementById('search-input');
     const filterTabs = document.getElementById('filter-tabs');
     const newNoteBtn = document.getElementById('new-note-btn');
@@ -142,6 +158,18 @@
     const editorFormatBar = document.getElementById('editor-format-bar');
     const fmtToggleBtn = document.getElementById('fmt-toggle-btn');
     const editorStatus = document.getElementById('editor-status');
+
+    const tabWork = document.getElementById('tab-work');
+    const tabDays = document.getElementById('tab-days');
+    const tabNotes = document.getElementById('tab-notes');
+    const workTree = document.getElementById('work-tree');
+    const workEmpty = document.getElementById('work-empty');
+    const calendarView = document.getElementById('calendar-view');
+    const notesList = document.getElementById('notes-list');
+    const notesEmpty = document.getElementById('notes-empty');
+    const badgeWork = document.getElementById('badge-work');
+    const badgeDays = document.getElementById('badge-days');
+    const badgeNotes = document.getElementById('badge-notes');
 
     function reveal() { document.body.classList.add('ready'); }
 
@@ -174,6 +202,33 @@
         content: '',
         onUpdate: () => scheduleSave(),
         onSelectionUpdate: () => updateToolbarState(),
+        editorProps: {
+          clipboardTextSerializer: (slice) => {
+            const lines = [];
+            slice.content.forEach(node => {
+              if (node.type.name === 'paragraph') {
+                lines.push(node.textContent);
+              } else if (node.type.name === 'heading') {
+                lines.push(node.textContent);
+              } else if (node.type.name === 'bulletList' || node.type.name === 'orderedList') {
+                let idx = 1;
+                node.content.forEach(li => {
+                  const prefix = node.type.name === 'orderedList' ? `${idx++}. ` : '- ';
+                  lines.push(prefix + li.textContent);
+                });
+              } else if (node.type.name === 'codeBlock') {
+                lines.push(node.textContent);
+              } else if (node.type.name === 'blockquote') {
+                node.content.forEach(child => {
+                  lines.push('> ' + child.textContent);
+                });
+              } else {
+                lines.push(node.textContent);
+              }
+            });
+            return lines.join('\n');
+          },
+        },
       });
     }
 
@@ -218,30 +273,16 @@
 
     initEditor();
 
-    // ── SVG icons ──
-
-    const taskIconSvg = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.3" fill="none"/><path d="M5.5 8l2 2 3.5-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-    const dailyIconSvg = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2.5" y="3" width="11" height="10.5" rx="1.5" stroke="currentColor" stroke-width="1.3" fill="none"/><path d="M2.5 6.5h11" stroke="currentColor" stroke-width="1.3"/><path d="M5.5 1.5v3M10.5 1.5v3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>';
-    const noteIconSvg = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4.5 1.5h5l3.5 3.5v8.5a1.5 1.5 0 01-1.5 1.5h-7A1.5 1.5 0 013 13.5V3a1.5 1.5 0 011.5-1.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none"/><path d="M9.5 1.5V5.5h4" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
-    const chevronSvg = '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M3 1l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>';
-    const deleteSvg = '<svg width="14" height="14" viewBox="0 0 14 14"><path d="M4 4l6 6M10 4l-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
-
     // ── Helpers ──
 
-    const projectIconSvg = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2.5 4.5V12a1.5 1.5 0 001.5 1.5h8a1.5 1.5 0 001.5-1.5V6.5a1.5 1.5 0 00-1.5-1.5H8L6.5 3.5H4A1.5 1.5 0 002.5 4.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none"/></svg>';
-
-    function getIconForType(type) {
-      if (type === 'task') return taskIconSvg;
-      if (type === 'daily') return dailyIconSvg;
-      if (type === 'project') return projectIconSvg;
-      return noteIconSvg;
-    }
-
-    function getBadgeLabel(type) {
-      if (type === 'task') return 'Task';
-      if (type === 'daily') return 'Day';
-      if (type === 'project') return 'Project';
-      return 'Note';
+    function formatDuration(totalSeconds) {
+      if (!totalSeconds || totalSeconds <= 0) return '—';
+      const totalMin = Math.round(totalSeconds / 60);
+      if (totalMin < 1) return '< 1m';
+      if (totalMin < 60) return `${totalMin}m`;
+      const h = Math.floor(totalMin / 60);
+      const m = totalMin % 60;
+      return m > 0 ? `${h}h ${m}m` : `${h}h`;
     }
 
     function formatRelativeDate(ms) {
@@ -259,7 +300,14 @@
       return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     }
 
-    // ── Load pages ──
+    function getBadgeLabel(type) {
+      if (type === 'task') return 'Task';
+      if (type === 'daily') return 'Day';
+      if (type === 'project') return 'Project';
+      return 'Note';
+    }
+
+    // ── Data loading ──
 
     async function loadPages() {
       try {
@@ -268,61 +316,467 @@
         console.error('Failed to load pages:', e);
         allPages = [];
       }
-      renderList();
     }
 
-    // ── Filter & search ──
-
-    function getFilteredPages() {
-      let pages = allPages;
-
-      // Apply type filter
-      if (activeFilter === 'work') {
-        pages = pages.filter(p => p.pageType === 'task' || p.pageType === 'project');
-      } else if (activeFilter !== 'all') {
-        pages = pages.filter(p => p.pageType === activeFilter);
+    async function loadWorkData() {
+      try {
+        allTasksData = await invoke('get_all_tasks_with_projects');
+      } catch (e) {
+        console.error('Failed to load tasks:', e);
+        allTasksData = { projects: [], tasks: [] };
       }
-
-      // Apply search (title only for instant results)
-      if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        pages = pages.filter(p => p.title.toLowerCase().includes(q));
-      }
-
-      return pages;
     }
 
-    // ── Render list ──
+    async function loadCalendarData() {
+      try {
+        monthTimeData = await invoke('get_month_time_data', { year: calendarYear, month: calendarMonth });
+      } catch (e) {
+        console.error('Failed to load calendar data:', e);
+        monthTimeData = {};
+      }
+    }
 
-    function renderList() {
-      const pages = getFilteredPages();
-      pageList.innerHTML = '';
+    // ── Tab switching ──
 
-      if (pages.length === 0) {
-        emptyState.style.display = '';
-        if (searchQuery) {
-          emptyStateText.textContent = `No pages matching "${searchQuery}"`;
-        } else if (activeFilter !== 'all') {
-          const labels = { task: 'task', daily: 'day', note: 'note', work: 'work' };
-          emptyStateText.textContent = `No ${labels[activeFilter]} pages found.`;
-        } else {
-          emptyStateText.textContent = 'No pages yet. Create a note to get started.';
-        }
+    function switchTab(tab) {
+      activeTab = tab;
+      filterTabs.querySelectorAll('.filter-tab').forEach(t => {
+        t.classList.toggle('active', t.dataset.tab === tab);
+      });
+      tabWork.style.display = tab === 'work' ? '' : 'none';
+      tabDays.style.display = tab === 'days' ? '' : 'none';
+      tabNotes.style.display = tab === 'notes' ? '' : 'none';
+      renderActiveTab();
+    }
+
+    filterTabs.addEventListener('click', (e) => {
+      const tab = e.target.closest('.filter-tab');
+      if (!tab) return;
+      switchTab(tab.dataset.tab);
+    });
+
+    async function renderActiveTab() {
+      if (activeTab === 'work') await renderWorkTree();
+      else if (activeTab === 'days') {
+        await loadCalendarData();
+        renderCalendar();
+      }
+      else if (activeTab === 'notes') renderNotesList();
+      updateBadges();
+    }
+
+    // ── Badge counts ──
+
+    function updateBadges() {
+      const q = searchQuery.toLowerCase();
+
+      // Hide badges entirely when there's no search query
+      if (!q) {
+        badgeWork.classList.add('hidden');
+        badgeDays.classList.add('hidden');
+        badgeNotes.classList.add('hidden');
         return;
       }
 
-      emptyState.style.display = 'none';
+      badgeWork.classList.remove('hidden');
+      badgeDays.classList.remove('hidden');
+      badgeNotes.classList.remove('hidden');
 
-      pages.forEach(page => {
+      // Work count: matching tasks + projects
+      let workCount = 0;
+      const { projects, tasks } = allTasksData;
+      const matchingProjects = new Set();
+      for (const t of tasks) {
+        if (t.title.toLowerCase().includes(q)) {
+          workCount++;
+          if (t.project) matchingProjects.add(t.project);
+        }
+      }
+      for (const p of projects) {
+        if (p.name.toLowerCase().includes(q)) matchingProjects.add(p.id);
+      }
+      workCount += matchingProjects.size;
+      badgeWork.textContent = workCount;
+
+      // Days count: matched daily pages
+      badgeDays.textContent = searchMatchedDailyIds.size;
+
+      // Notes count
+      const notesCount = allPages.filter(p => p.pageType === 'note' && p.title.toLowerCase().includes(q)).length;
+      badgeNotes.textContent = notesCount;
+    }
+
+    // ══════════════════════════════════════
+    // ── WORK TAB: Tree View ──
+    // ══════════════════════════════════════
+
+    function renderArchivedSection(archivedTasks, sectionKey) {
+      const isOpen = expandedArchived.has(sectionKey);
+      const container = document.createElement('div');
+      container.className = 'tree-archived-section';
+
+      const header = document.createElement('div');
+      header.className = 'tree-archived-header';
+
+      const chevron = document.createElement('span');
+      chevron.className = 'tree-chevron' + (isOpen ? ' expanded' : '');
+      chevron.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M3 1l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>';
+
+      const label = document.createElement('span');
+      label.className = 'tree-archived-label';
+      label.textContent = `Archived (${archivedTasks.length})`;
+
+      header.appendChild(chevron);
+      header.appendChild(label);
+      header.addEventListener('click', () => {
+        if (expandedArchived.has(sectionKey)) expandedArchived.delete(sectionKey);
+        else expandedArchived.add(sectionKey);
+        renderWorkTree();
+      });
+
+      container.appendChild(header);
+
+      if (isOpen) {
+        const sorted = [...archivedTasks].sort((a, b) => a.order - b.order);
+        for (const task of sorted) {
+          container.appendChild(createTaskRow(task));
+        }
+      }
+
+      return container;
+    }
+
+    async function renderWorkTree() {
+      const { projects, tasks } = allTasksData;
+      const q = searchQuery.toLowerCase();
+
+      // Group tasks by project
+      const projectMap = new Map();
+      for (const p of projects) {
+        projectMap.set(p.id, { ...p, tasks: [] });
+      }
+      const unassigned = [];
+
+      for (const t of tasks) {
+        if (q && !t.title.toLowerCase().includes(q)) {
+          // Check if project name matches — if so, include all tasks
+          if (t.project) {
+            const proj = projectMap.get(t.project);
+            if (proj && !proj.name.toLowerCase().includes(q)) continue;
+          } else {
+            continue;
+          }
+        }
+        if (t.project && projectMap.has(t.project)) {
+          projectMap.get(t.project).tasks.push(t);
+        } else {
+          unassigned.push(t);
+        }
+      }
+
+      // Sort projects by order
+      const sortedProjects = [...projectMap.values()]
+        .filter(p => {
+          if (q) {
+            return p.tasks.length > 0 || p.name.toLowerCase().includes(q);
+          }
+          return true;
+        })
+        .sort((a, b) => a.order - b.order);
+
+      workTree.innerHTML = '';
+
+      if (sortedProjects.length === 0 && unassigned.length === 0) {
+        workEmpty.style.display = '';
+        return;
+      }
+      workEmpty.style.display = 'none';
+
+      for (const proj of sortedProjects) {
+        const totalSecs = proj.tasks.reduce((sum, t) => sum + t.totalSeconds, 0);
+        const isExpanded = expandedProjects.has(proj.id);
+
+        const activeTasks = proj.tasks.filter(t => !t.archived);
+        const archivedTasks = proj.tasks.filter(t => t.archived);
+
+        // Project header
+        const header = document.createElement('div');
+        header.className = 'tree-project-header';
+
+        const chevron = document.createElement('span');
+        chevron.className = 'tree-chevron' + (isExpanded ? ' expanded' : '');
+        chevron.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M3 1l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>';
+        chevron.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (expandedProjects.has(proj.id)) expandedProjects.delete(proj.id);
+          else expandedProjects.add(proj.id);
+          renderWorkTree();
+        });
+
+        const dot = document.createElement('span');
+        dot.className = 'tree-project-dot';
+        dot.style.background = proj.color;
+
+        const nameWrap = document.createElement('span');
+        nameWrap.className = 'tree-name-wrap';
+
+        const name = document.createElement('span');
+        name.className = 'tree-project-name';
+        name.textContent = proj.name;
+
+        const nameArrow = document.createElement('span');
+        nameArrow.className = 'tree-open-arrow';
+        nameArrow.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 5h6M5.5 2.5L8 5l-2.5 2.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>';
+
+        nameWrap.appendChild(name);
+        nameWrap.appendChild(nameArrow);
+        nameWrap.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openPage({ id: 'project_' + proj.id, title: proj.name, pageType: 'project' });
+        });
+
+        const time = document.createElement('span');
+        time.className = 'tree-time';
+        time.textContent = formatDuration(totalSecs);
+        if (totalSecs > 0) {
+          time.classList.add('clickable');
+          time.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openPage({ id: 'project_' + proj.id, title: proj.name, pageType: 'project' }, { view: 'timeline' });
+          });
+        }
+
+        header.appendChild(chevron);
+        header.appendChild(dot);
+        header.appendChild(nameWrap);
+        header.appendChild(time);
+        workTree.appendChild(header);
+
+        // Task rows (if expanded)
+        if (isExpanded) {
+          // Active tasks first
+          const sortedActive = [...activeTasks].sort((a, b) => a.order - b.order);
+          for (const task of sortedActive) {
+            workTree.appendChild(createTaskRow(task));
+          }
+          // Archived section (collapsed by default)
+          if (archivedTasks.length > 0) {
+            workTree.appendChild(renderArchivedSection(archivedTasks, 'proj_' + proj.id));
+          }
+        }
+      }
+
+      // Unassigned tasks divider + rows
+      const unassignedActive = unassigned.filter(t => !t.archived);
+      const unassignedArchived = unassigned.filter(t => t.archived);
+
+      if (unassignedActive.length > 0 || unassignedArchived.length > 0) {
+        if (sortedProjects.length > 0) {
+          const divider = document.createElement('div');
+          divider.className = 'tree-divider';
+          workTree.appendChild(divider);
+        }
+        const sortedActive = [...unassignedActive].sort((a, b) => a.order - b.order);
+        for (const task of sortedActive) {
+          workTree.appendChild(createTaskRow(task));
+        }
+        if (unassignedArchived.length > 0) {
+          workTree.appendChild(renderArchivedSection(unassignedArchived, '_unassigned'));
+        }
+      }
+    }
+
+    function createTaskRow(task) {
+      const row = document.createElement('div');
+      row.className = 'tree-task-row' + (task.completed ? ' completed' : '') + (task.inProgress ? ' in-progress' : '');
+
+      const status = document.createElement('span');
+      status.className = 'tree-task-status';
+      if (task.completed) {
+        status.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.5" stroke="#6366f1" stroke-width="1.2" fill="none"/><path d="M4.5 7l2 2 3.5-3.5" stroke="#6366f1" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      } else if (task.inProgress) {
+        status.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.5" stroke="#6366f1" stroke-width="1.2" fill="none"/><circle cx="7" cy="7" r="3" fill="#6366f1"/></svg>';
+        status.classList.add('pulse');
+      } else {
+        status.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.5" stroke="#cbd5e1" stroke-width="1.2" fill="none"/></svg>';
+      }
+
+      const titleWrap = document.createElement('span');
+      titleWrap.className = 'tree-name-wrap';
+
+      const title = document.createElement('span');
+      title.className = 'tree-task-title';
+      title.textContent = task.title;
+
+      const titleArrow = document.createElement('span');
+      titleArrow.className = 'tree-open-arrow';
+      titleArrow.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 5h6M5.5 2.5L8 5l-2.5 2.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>';
+
+      titleWrap.appendChild(title);
+      titleWrap.appendChild(titleArrow);
+      titleWrap.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openPage({ id: task.id, title: task.title, pageType: 'task' });
+      });
+
+      const time = document.createElement('span');
+      time.className = 'tree-time';
+      time.textContent = formatDuration(task.totalSeconds);
+      if (task.totalSeconds > 0) {
+        time.classList.add('clickable');
+        time.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openPage({ id: task.id, title: task.title, pageType: 'task' }, { view: 'timeline' });
+        });
+      }
+
+      row.appendChild(status);
+      row.appendChild(titleWrap);
+      row.appendChild(time);
+      return row;
+    }
+
+    // ══════════════════════════════════════
+    // ── DAYS TAB: Calendar View ──
+    // ══════════════════════════════════════
+
+    function renderCalendar() {
+      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'];
+
+      const today = new Date();
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+      // First day of month and total days
+      const firstDay = new Date(calendarYear, calendarMonth - 1, 1);
+      const daysInMonth = new Date(calendarYear, calendarMonth, 0).getDate();
+      // Monday = 0, Sunday = 6
+      let startDow = firstDay.getDay() - 1;
+      if (startDow < 0) startDow = 6;
+
+      let html = '';
+
+      // Navigation header
+      html += '<div class="cal-nav">';
+      html += '<button class="cal-nav-btn" id="cal-prev"><svg width="12" height="12" viewBox="0 0 12 12"><path d="M8 2L4 6l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg></button>';
+      html += `<span class="cal-month-label">${monthNames[calendarMonth - 1]} ${calendarYear}</span>`;
+      html += '<button class="cal-nav-btn" id="cal-next"><svg width="12" height="12" viewBox="0 0 12 12"><path d="M4 2l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg></button>';
+      html += '</div>';
+
+      // Day headers
+      html += '<div class="cal-grid">';
+      const dayLabels = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+      for (const d of dayLabels) {
+        html += `<div class="cal-header-cell">${d}</div>`;
+      }
+
+      // Empty cells before first day
+      for (let i = 0; i < startDow; i++) {
+        html += '<div class="cal-cell empty"></div>';
+      }
+
+      // Day cells
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dateStr = `${calendarYear}-${String(calendarMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const secs = monthTimeData[dateStr] || 0;
+        const isToday = dateStr === todayStr;
+        const hasData = secs > 0;
+        const isSearchMatch = searchQuery && searchMatchedDailyIds.has('daily_' + dateStr);
+
+        let cls = 'cal-cell';
+        if (isToday) cls += ' today';
+        if (hasData) cls += ' has-data';
+        if (isSearchMatch) cls += ' search-match';
+
+        html += `<div class="${cls}" data-date="${dateStr}">`;
+        html += `<span class="cal-day-num">${day}</span>`;
+        if (hasData) {
+          html += `<span class="cal-day-time" data-date="${dateStr}">${formatDuration(secs)}</span>`;
+        }
+        html += '</div>';
+      }
+
+      html += '</div>';
+      calendarView.innerHTML = html;
+
+      // Wire navigation
+      document.getElementById('cal-prev').addEventListener('click', () => {
+        calendarMonth--;
+        if (calendarMonth < 1) { calendarMonth = 12; calendarYear--; }
+        loadCalendarData().then(() => { renderCalendar(); updateBadges(); });
+      });
+      document.getElementById('cal-next').addEventListener('click', () => {
+        calendarMonth++;
+        if (calendarMonth > 12) { calendarMonth = 1; calendarYear++; }
+        loadCalendarData().then(() => { renderCalendar(); updateBadges(); });
+      });
+
+      // Wire cell clicks
+      calendarView.querySelectorAll('.cal-cell.has-data').forEach(cell => {
+        const dateStr = cell.dataset.date;
+        const dayNum = cell.querySelector('.cal-day-num');
+        const dayTime = cell.querySelector('.cal-day-time');
+
+        // Click on date number → notes editor
+        dayNum.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const d = new Date(dateStr + 'T00:00:00');
+          const title = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+          openPage({ id: 'daily_' + dateStr, title, pageType: 'daily' });
+        });
+
+        // Click on time → timeline
+        if (dayTime) {
+          dayTime.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const d = new Date(dateStr + 'T00:00:00');
+            const title = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+            openPage({ id: 'daily_' + dateStr, title, pageType: 'daily' }, { view: 'timeline' });
+          });
+        }
+
+        // Click on cell itself (anywhere) → notes editor
+        cell.addEventListener('click', () => {
+          const d = new Date(dateStr + 'T00:00:00');
+          const title = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+          openPage({ id: 'daily_' + dateStr, title, pageType: 'daily' });
+        });
+      });
+    }
+
+    // ══════════════════════════════════════
+    // ── NOTES TAB ──
+    // ══════════════════════════════════════
+
+    function renderNotesList() {
+      const q = searchQuery.toLowerCase();
+      let notes = allPages.filter(p => p.pageType === 'note');
+      if (q) {
+        notes = notes.filter(p => p.title.toLowerCase().includes(q));
+      }
+
+      notesList.innerHTML = '';
+
+      if (notes.length === 0) {
+        notesEmpty.style.display = '';
+        notesEmpty.querySelector('p').textContent = q
+          ? `No notes matching "${searchQuery}"`
+          : 'No notes yet. Create one to get started.';
+        return;
+      }
+      notesEmpty.style.display = 'none';
+
+      const noteIconSvg = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4.5 1.5h5l3.5 3.5v8.5a1.5 1.5 0 01-1.5 1.5h-7A1.5 1.5 0 013 13.5V3a1.5 1.5 0 011.5-1.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none"/><path d="M9.5 1.5V5.5h4" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
+      const deleteSvg = '<svg width="14" height="14" viewBox="0 0 14 14"><path d="M4 4l6 6M10 4l-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+
+      for (const page of notes) {
         const row = document.createElement('div');
         row.className = 'page-row';
 
-        // Icon
         const icon = document.createElement('div');
-        icon.className = `page-row-icon type-${page.pageType}`;
-        icon.innerHTML = getIconForType(page.pageType);
+        icon.className = 'page-row-icon type-note';
+        icon.innerHTML = noteIconSvg;
 
-        // Content
         const content = document.createElement('div');
         content.className = 'page-row-content';
 
@@ -330,155 +784,59 @@
         title.className = 'page-row-title';
         title.textContent = page.title;
 
-        const meta = document.createElement('div');
-        meta.className = 'page-row-meta';
-
-        const badge = document.createElement('span');
-        badge.className = `page-type-badge type-${page.pageType}`;
-        badge.textContent = getBadgeLabel(page.pageType);
-
         const date = document.createElement('span');
         date.className = 'page-row-date';
         date.textContent = formatRelativeDate(page.updatedAt);
 
-        meta.appendChild(badge);
-        meta.appendChild(date);
         content.appendChild(title);
-        content.appendChild(meta);
+        content.appendChild(date);
 
-        // Chevron
-        const chevron = document.createElement('div');
-        chevron.className = 'page-row-chevron';
-        chevron.innerHTML = chevronSvg;
-
-        // Delete button (for note pages only, or all pages)
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'page-row-delete';
         deleteBtn.innerHTML = deleteSvg;
-        deleteBtn.title = 'Delete page';
+        deleteBtn.title = 'Delete note';
         deleteBtn.addEventListener('click', async (e) => {
           e.stopPropagation();
           await invoke('delete_page', { taskId: page.id });
           await loadPages();
+          renderNotesList();
+          updateBadges();
         });
 
         row.appendChild(icon);
         row.appendChild(content);
-        row.appendChild(chevron);
         row.appendChild(deleteBtn);
-
         row.addEventListener('click', () => openPage(page));
-        pageList.appendChild(row);
-      });
+        notesList.appendChild(row);
+      }
     }
 
     // ── Search handler ──
 
     searchInput.addEventListener('input', () => {
       searchQuery = searchInput.value.trim();
+      renderActiveTab();
 
-      // Instant title-based filtering
-      renderList();
-
-      // Debounced content search
+      // Debounced content search for calendar highlights
       clearTimeout(searchTimer);
       if (searchQuery.length >= 2) {
         searchTimer = setTimeout(async () => {
           try {
             const results = await invoke('search_pages', { query: searchQuery });
-            // Merge: keep allPages but reorder to put search results first
-            const resultIds = new Set(results.map(r => r.id));
-            const searchFiltered = results.concat(
-              allPages.filter(p => !resultIds.has(p.id))
+            searchMatchedDailyIds = new Set(
+              results.filter(r => r.pageType === 'daily').map(r => r.id)
             );
-            // Only replace the rendered list with search-aware ordering
-            const q = searchQuery.toLowerCase();
-            const pages = searchFiltered.filter(p => {
-              if (activeFilter !== 'all' && p.pageType !== activeFilter) return false;
-              return resultIds.has(p.id);
-            });
-
-            pageList.innerHTML = '';
-            if (pages.length === 0) {
-              emptyState.style.display = '';
-              emptyStateText.textContent = `No pages matching "${searchQuery}"`;
-              return;
-            }
-            emptyState.style.display = 'none';
-            pages.forEach(page => {
-              const row = createPageRow(page);
-              pageList.appendChild(row);
-            });
+            if (activeTab === 'days') renderCalendar();
+            updateBadges();
           } catch (e) {
             console.error('Search failed:', e);
           }
         }, 300);
+      } else {
+        searchMatchedDailyIds = new Set();
+        if (activeTab === 'days') renderCalendar();
+        updateBadges();
       }
-    });
-
-    function createPageRow(page) {
-      const row = document.createElement('div');
-      row.className = 'page-row';
-
-      const icon = document.createElement('div');
-      icon.className = `page-row-icon type-${page.pageType}`;
-      icon.innerHTML = getIconForType(page.pageType);
-
-      const content = document.createElement('div');
-      content.className = 'page-row-content';
-
-      const title = document.createElement('div');
-      title.className = 'page-row-title';
-      title.textContent = page.title;
-
-      const meta = document.createElement('div');
-      meta.className = 'page-row-meta';
-
-      const badge = document.createElement('span');
-      badge.className = `page-type-badge type-${page.pageType}`;
-      badge.textContent = getBadgeLabel(page.pageType);
-
-      const date = document.createElement('span');
-      date.className = 'page-row-date';
-      date.textContent = formatRelativeDate(page.updatedAt);
-
-      meta.appendChild(badge);
-      meta.appendChild(date);
-      content.appendChild(title);
-      content.appendChild(meta);
-
-      const chevron = document.createElement('div');
-      chevron.className = 'page-row-chevron';
-      chevron.innerHTML = chevronSvg;
-
-      const deleteBtn = document.createElement('button');
-      deleteBtn.className = 'page-row-delete';
-      deleteBtn.innerHTML = deleteSvg;
-      deleteBtn.title = 'Delete page';
-      deleteBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        await invoke('delete_page', { taskId: page.id });
-        await loadPages();
-      });
-
-      row.appendChild(icon);
-      row.appendChild(content);
-      row.appendChild(chevron);
-      row.appendChild(deleteBtn);
-
-      row.addEventListener('click', () => openPage(page));
-      return row;
-    }
-
-    // ── Filter tabs ──
-
-    filterTabs.addEventListener('click', (e) => {
-      const tab = e.target.closest('.filter-tab');
-      if (!tab) return;
-      activeFilter = tab.dataset.filter;
-      filterTabs.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      renderList();
     });
 
     // ── New note ──
@@ -493,7 +851,7 @@
       }
     });
 
-    // ── Open page ──
+    // ── Open page (editor) ──
 
     async function openPage(pageMeta, openPageOptions) {
       currentPageId = pageMeta.id;
@@ -559,8 +917,9 @@
       editorView.classList.add('hidden');
       listView.classList.remove('hidden');
 
-      // Refresh list
-      await loadPages();
+      // Refresh and render current tab
+      await Promise.all([loadPages(), loadWorkData()]);
+      renderActiveTab();
     });
 
     // ── Auto-save with debounce ──
@@ -632,7 +991,7 @@
       return m === 0 ? `${h}${ampm}` : `${h}:${String(m).padStart(2, '0')}${ampm}`;
     }
 
-    function formatDuration(ms) {
+    function formatTimelineDuration(ms) {
       const totalMin = Math.floor(ms / 60000);
       if (totalMin < 60) return `${totalMin}m`;
       const h = Math.floor(totalMin / 60);
@@ -732,7 +1091,6 @@
         const totalHours = axisSpan / 3600000;
         const axisWidthRaw = totalHours * PX_PER_HOUR;
 
-        // Hour tick labels + gridlines
         let ticksHtml = '';
         let gridHtml = '';
         const tickDate = new Date(axisStart);
@@ -741,7 +1099,6 @@
           const label = formatTimeShort(tickDate.getTime());
           ticksHtml += `<div class="timeline-hour-tick" style="left:${leftPx}px"><span>${label}</span></div>`;
           gridHtml += `<div class="timeline-gridline" style="left:${leftPx}px"></div>`;
-          // 30-min minor tick
           const halfMs = tickDate.getTime() + 1800000;
           if (halfMs < axisEnd) {
             const halfPx = ((halfMs - axisStart) / axisSpan) * axisWidthRaw;
@@ -764,7 +1121,7 @@
           const timeRange = `${formatTimeShort(bout.startMs)}–${bout.endMs === null ? 'now' : formatTimeShort(bout.endMs)}`;
           const titleHtml = hasMultipleTasks ? `<span class="hblock-tooltip-title">${bout.taskTitle}</span>` : '';
 
-          blocksHtml += `<div class="timeline-hblock${activeClass}" style="left:${leftPx}px;width:${widthPx}px${colorStyle}"><span class="hblock-tooltip">${titleHtml}<span class="hblock-tooltip-time">${timeRange}</span><span class="hblock-tooltip-dur">${formatDuration(durationMs)}</span></span></div>`;
+          blocksHtml += `<div class="timeline-hblock${activeClass}" style="left:${leftPx}px;width:${widthPx}px${colorStyle}"><span class="hblock-tooltip">${titleHtml}<span class="hblock-tooltip-time">${timeRange}</span><span class="hblock-tooltip-dur">${formatTimelineDuration(durationMs)}</span></span></div>`;
         }
 
         html += `
@@ -777,11 +1134,10 @@
           </div>`;
       }
 
-      html += `<div class="timeline-summary"><span>Total</span><span class="timeline-total-value">${formatDuration(totalMs)}</span></div>`;
+      html += `<div class="timeline-summary"><span>Total</span><span class="timeline-total-value">${formatTimelineDuration(totalMs)}</span></div>`;
       html += '</div>';
       browserTimelineContainer.innerHTML = html;
 
-      // Position tooltips left/right based on available space
       browserTimelineContainer.querySelectorAll('.timeline-hblock').forEach(block => {
         const tooltip = block.querySelector('.hblock-tooltip');
         if (!tooltip) return;
@@ -790,16 +1146,13 @@
           const blockRect = block.getBoundingClientRect();
           const tooltipWidth = tooltip.offsetWidth || 120;
           const spaceRight = window.innerWidth - blockRect.right;
-          const spaceLeft = blockRect.left;
 
           tooltip.classList.remove('tooltip-left', 'tooltip-right');
 
           if (spaceRight >= tooltipWidth + 12) {
-            // Show on the right
             tooltip.classList.add('tooltip-right');
             tooltip.style.left = (blockRect.right + 8) + 'px';
           } else {
-            // Show on the left
             tooltip.classList.add('tooltip-left');
             tooltip.style.left = (blockRect.left - tooltipWidth - 8) + 'px';
           }
@@ -845,10 +1198,10 @@
         hoursHtml += `<div class="timeline-hour-line" style="top:${top}px"><span>${h12} ${ampm}</span></div>`;
       }
 
-      const now = Date.now();
+      const nowTs = Date.now();
       let nowHtml = '';
-      if (now >= axisStartMs && now <= axisEndMs) {
-        const nowTop = ((now - axisStartMs) / axisSpan) * axisHeight;
+      if (nowTs >= axisStartMs && nowTs <= axisEndMs) {
+        const nowTop = ((nowTs - axisStartMs) / axisSpan) * axisHeight;
         nowHtml = `<div class="timeline-now-marker" style="top:${nowTop}px"><span>now</span></div>`;
       }
 
@@ -864,14 +1217,14 @@
         const height = Math.max(rawHeight, 4);
         const color = colors[bout.colorIndex % colors.length];
         const activeClass = bout.endMs === null ? ' active' : '';
-        const label = `${bout.taskTitle} · ${formatDuration(durationMs)}`;
+        const label = `${bout.taskTitle} · ${formatTimelineDuration(durationMs)}`;
         const timeLabel = `${formatTimeShort(bout.startMs)}–${bout.endMs === null ? 'now' : formatTimeShort(bout.endMs)}`;
         const isShort = height < 28;
 
         if (isShort) {
-          blocksHtml += `<div class="timeline-vblock short${activeClass}" style="top:${top}px;height:${height}px;background:${color}" title="${timeLabel} · ${formatDuration(durationMs)}"></div><div class="vblock-side-label" style="top:${top}px;color:${color}">${label} <span class="vblock-side-time">${timeLabel}</span></div>`;
+          blocksHtml += `<div class="timeline-vblock short${activeClass}" style="top:${top}px;height:${height}px;background:${color}" title="${timeLabel} · ${formatTimelineDuration(durationMs)}"></div><div class="vblock-side-label" style="top:${top}px;color:${color}">${label} <span class="vblock-side-time">${timeLabel}</span></div>`;
         } else {
-          blocksHtml += `<div class="timeline-vblock${activeClass}" style="top:${top}px;height:${height}px;background:${color}" title="${timeLabel} · ${formatDuration(durationMs)}"><span class="vblock-label">${label}</span><span class="vblock-time">${timeLabel}</span></div>`;
+          blocksHtml += `<div class="timeline-vblock${activeClass}" style="top:${top}px;height:${height}px;background:${color}" title="${timeLabel} · ${formatTimelineDuration(durationMs)}"><span class="vblock-label">${label}</span><span class="vblock-time">${timeLabel}</span></div>`;
         }
       }
 
@@ -882,7 +1235,7 @@
             ${blocksHtml}
             ${nowHtml}
           </div>
-          <div class="timeline-summary"><span>Total</span><span class="timeline-total-value">${formatDuration(totalMs)}</span></div>
+          <div class="timeline-summary"><span>Total</span><span class="timeline-total-value">${formatTimelineDuration(totalMs)}</span></div>
         </div>`;
 
       browserTimelineContainer.innerHTML = html;
@@ -908,10 +1261,8 @@
         } catch (e) { /* fallback below */ }
         return { id: taskId, title: projectId, pageType: 'project' };
       }
-      // Look up in loaded pages first
       const found = allPages.find(p => p.id === taskId);
       if (found) return found;
-      // Fallback: load data to find task title
       try {
         const data = await invoke('load_data');
         const allTasks = [...(data.todos || []), ...(data.archivedTodos || [])];
@@ -937,24 +1288,17 @@
     const initialPageId = urlParams.get('page');
     const initialView = urlParams.get('view');
 
+    // Load all data in parallel
+    await Promise.all([loadPages(), loadWorkData(), loadCalendarData()]);
+
     if (initialPageId) {
       listView.classList.add('hidden');
       editorView.classList.remove('hidden');
-
-      const isDeterministic = initialPageId.startsWith('daily_') || initialPageId.startsWith('project_');
-      if (isDeterministic) {
-        const pageMeta = await resolvePageMeta(initialPageId);
-        await openPage(pageMeta, initialView ? { view: initialView } : null);
-        reveal();
-        loadPages();
-      } else {
-        await loadPages();
-        const pageMeta = await resolvePageMeta(initialPageId);
-        await openPage(pageMeta, initialView ? { view: initialView } : null);
-        reveal();
-      }
+      const pageMeta = await resolvePageMeta(initialPageId);
+      await openPage(pageMeta, initialView ? { view: initialView } : null);
+      reveal();
     } else {
-      await loadPages();
+      renderActiveTab();
       reveal();
     }
   })();

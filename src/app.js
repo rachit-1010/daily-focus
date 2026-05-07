@@ -445,7 +445,7 @@
       estimatedMinutes: s.estimatedMinutes || null,
     }));
 
-    todos.unshift({
+    const newTodo = {
       id: generateId('todo'),
       title,
       completed: false,
@@ -458,11 +458,31 @@
       timerStartedAt: null,
       project: projectId,
       isToday: modalTodayState,
-    });
+    };
+
+    // Insert after the last incomplete task in the same project group
+    let insertIdx = -1;
+    for (let i = todos.length - 1; i >= 0; i--) {
+      if (todos[i].project === projectId && !todos[i].completed) {
+        insertIdx = i + 1;
+        break;
+      }
+    }
+    if (insertIdx === -1) {
+      // No incomplete sibling found — insert after the last task in the same project, or at end
+      for (let i = todos.length - 1; i >= 0; i--) {
+        if (todos[i].project === projectId) {
+          insertIdx = i + 1;
+          break;
+        }
+      }
+    }
+    if (insertIdx === -1) insertIdx = todos.length;
+    todos.splice(insertIdx, 0, newTodo);
     todos.forEach((t, i) => { t.order = i; });
 
     await invoke('save_todos', { todos, currentTaskId });
-    if (projectId) await invoke('set_project', { taskId: todos[0].id, project: projectId });
+    if (projectId) await invoke('set_project', { taskId: newTodo.id, project: projectId });
     closeModal();
     render();
   }

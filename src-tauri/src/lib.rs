@@ -803,7 +803,7 @@ fn open_page_window(
     let url = tauri::WebviewUrl::App(format!("pages_browser.html?page={}{}", task_id, view_param).into());
 
     let mut builder = tauri::WebviewWindowBuilder::new(&app, label, url)
-        .title("All Pages")
+        .title("Browse")
         .inner_size(440.0, 560.0)
         .min_inner_size(352.0, 400.0);
 
@@ -1134,7 +1134,7 @@ fn open_pages_browser(app: AppHandle) -> Result<(), String> {
     let url = tauri::WebviewUrl::App("pages_browser.html".into());
 
     let mut builder = tauri::WebviewWindowBuilder::new(&app, label, url)
-        .title("All Pages")
+        .title("Browse")
         .inner_size(440.0, 560.0)
         .min_inner_size(352.0, 400.0);
 
@@ -1348,6 +1348,106 @@ fn load_timeline(store: tauri::State<DataStore>, task_id: String) -> Vec<Timelin
     }
 }
 
+// ── Browser commands ──
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+struct TaskSummary {
+    id: String,
+    title: String,
+    completed: bool,
+    in_progress: bool,
+    archived: bool,
+    project: Option<String>,
+    total_seconds: u64,
+    order: usize,
+}
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+struct AllTasksResponse {
+    projects: Vec<Project>,
+    tasks: Vec<TaskSummary>,
+}
+
+fn compute_total_seconds(todo: &Todo) -> u64 {
+    let bouts = compute_bouts_from_logs(todo, "", 0);
+    let mut total: u64 = 0;
+    for bout in &bouts {
+        let end = bout.end_ms.unwrap_or_else(now_ms);
+        if end > bout.start_ms {
+            total += (end - bout.start_ms) / 1000;
+        }
+    }
+    total
+}
+
+#[tauri::command]
+fn get_all_tasks_with_projects(store: tauri::State<DataStore>) -> AllTasksResponse {
+    let data = store.data.lock().unwrap();
+    let mut tasks: Vec<TaskSummary> = Vec::new();
+
+    for todo in data.todos.iter() {
+        tasks.push(TaskSummary {
+            id: todo.id.clone(),
+            title: todo.title.clone(),
+            completed: todo.completed,
+            in_progress: todo.in_progress,
+            archived: false,
+            project: todo.project.clone(),
+            total_seconds: compute_total_seconds(todo),
+            order: todo.order,
+        });
+    }
+    for todo in data.archived_todos.iter() {
+        tasks.push(TaskSummary {
+            id: todo.id.clone(),
+            title: todo.title.clone(),
+            completed: todo.completed,
+            in_progress: todo.in_progress,
+            archived: true,
+            project: todo.project.clone(),
+            total_seconds: compute_total_seconds(todo),
+            order: todo.order,
+        });
+    }
+
+    AllTasksResponse {
+        projects: data.projects.clone(),
+        tasks,
+    }
+}
+
+#[tauri::command]
+fn get_month_time_data(store: tauri::State<DataStore>, year: u32, month: u32) -> std::collections::HashMap<String, u64> {
+    use chrono::{TimeZone, Local, Datelike};
+
+    let data = store.data.lock().unwrap();
+    let mut day_seconds: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+
+    for todo in data.todos.iter().chain(data.archived_todos.iter()) {
+        if todo.time_logs.is_empty() {
+            continue;
+        }
+        let raw = compute_bouts_from_logs(todo, &todo.title, 0);
+        let split = split_bouts_at_midnight(raw);
+
+        for bout in &split {
+            let dt = Local.timestamp_millis_opt(bout.start_ms as i64).unwrap();
+            if dt.year() as u32 == year && dt.month() == month {
+                let end = bout.end_ms.unwrap_or_else(now_ms);
+                if end > bout.start_ms {
+                    let secs = (end - bout.start_ms) / 1000;
+                    let date_key = dt.format("%Y-%m-%d").to_string();
+                    *day_seconds.entry(date_key).or_insert(0) += secs;
+                }
+            }
+        }
+    }
+
+    day_seconds
+}
+
 // ── App entry point ──
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1419,6 +1519,8 @@ pub fn run() {
             search_pages,
             open_pages_browser,
             load_timeline,
+            get_all_tasks_with_projects,
+            get_month_time_data,
         ])
         .on_window_event(|window, event| {
             match event {
